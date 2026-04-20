@@ -72,3 +72,8 @@ def test_safe_codes_enumerated():
     assert SAFE_CODES == frozenset(
         {"auth_expired", "forbidden", "rate_limited", "invalid_query", "upstream_error"}
     )
+
+
+def test_unsafe_code_rejected_at_construction():
+    with pytest.raises(ValueError, match="unsafe error code"):
+        WazuhError("leaked_detail", "x", 500)
