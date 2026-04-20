@@ -14,6 +14,7 @@ _REDACTED: Final[str] = "<redacted>"
 @final
 class SecretValue:
     __slots__ = ("_value",)
+    _value: str
 
     def __init__(self, value: str) -> None:
         if not isinstance(value, str):
