@@ -1196,7 +1196,7 @@ def _validate_time_range(tr: str) -> None:
             f"time_range must match '<int><m|h|d>' (e.g., '1h', '24h', '7d'); got {tr!r}"
         )
     n, unit = int(m.group(1)), m.group(2)
-    if n * _UNIT_SECONDS[unit] > _MAX_LOOKBACK_SECONDS:
+    if n * _UNIT_SECONDS[unit] >= _MAX_LOOKBACK_SECONDS:
         raise ValueError(f"time_range exceeds 30-day lookback cap: {tr!r}")
 
 
