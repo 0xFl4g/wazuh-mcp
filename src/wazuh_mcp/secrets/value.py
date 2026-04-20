@@ -1,16 +1,17 @@
 """SecretValue — wraps sensitive strings so they cannot leak via
-repr/str/json/logging. Callers must call .expose() to access plaintext,
-which makes every plaintext read site grep-able.
+repr/str/json/logging/pickle/copy. Callers must call .expose() to access
+plaintext, which makes every plaintext read site grep-able.
 """
 
 from __future__ import annotations
 
 import hashlib
-from typing import Final
+from typing import Final, final
 
 _REDACTED: Final[str] = "<redacted>"
 
 
+@final
 class SecretValue:
     __slots__ = ("_value",)
 
@@ -45,3 +46,17 @@ class SecretValue:
 
     def __setattr__(self, name: str, value: object) -> None:
         raise AttributeError("SecretValue is immutable")
+
+    def __delattr__(self, name: str) -> None:
+        raise AttributeError("SecretValue is immutable")
+
+    def __copy__(self) -> SecretValue:
+        return SecretValue(self._value)
+
+    def __deepcopy__(self, memo: dict) -> SecretValue:
+        return SecretValue(self._value)
+
+    def __reduce__(self) -> tuple:
+        # Refuse pickle — pickling a SecretValue would emit plaintext in the
+        # serialized blob. Callers must re-fetch from the SecretStore.
+        raise TypeError("SecretValue is not picklable; fetch from SecretStore")

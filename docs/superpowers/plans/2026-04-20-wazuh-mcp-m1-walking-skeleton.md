@@ -398,18 +398,19 @@ File: `src/wazuh_mcp/secrets/value.py`
 
 ```python
 """SecretValue — wraps sensitive strings so they cannot leak via
-repr/str/json/logging. Callers must call .expose() to access plaintext,
-which makes every plaintext read site grep-able.
+repr/str/json/logging/pickle/copy. Callers must call .expose() to access
+plaintext, which makes every plaintext read site grep-able.
 """
 
 from __future__ import annotations
 
 import hashlib
-from typing import Final
+from typing import Final, final
 
 _REDACTED: Final[str] = "<redacted>"
 
 
+@final
 class SecretValue:
     __slots__ = ("_value",)
 
@@ -444,12 +445,26 @@ class SecretValue:
 
     def __setattr__(self, name: str, value: object) -> None:
         raise AttributeError("SecretValue is immutable")
+
+    def __delattr__(self, name: str) -> None:
+        raise AttributeError("SecretValue is immutable")
+
+    def __copy__(self) -> "SecretValue":
+        return SecretValue(self._value)
+
+    def __deepcopy__(self, memo: dict) -> "SecretValue":
+        return SecretValue(self._value)
+
+    def __reduce__(self) -> tuple:
+        # Refuse pickle — pickling a SecretValue would emit plaintext in the
+        # serialized blob. Callers must re-fetch from the SecretStore.
+        raise TypeError("SecretValue is not picklable; fetch from SecretStore")
 ```
 
 - [ ] **Step 3.5: Run tests — expect pass**
 
 Run: `uv run pytest tests/unit/test_secret_value.py -v`
-Expected: 8 passed (the `hypothesis` property test counts as 1).
+Expected: 14 passed (the `hypothesis` property test counts as 1; the parametrized `test_non_str_init_raises` expands to 6 cases at collection time, yielding 19 reported items from 14 test functions).
 
 - [ ] **Step 3.6: Commit**
 

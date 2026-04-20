@@ -1,6 +1,9 @@
+import copy as _copy
 import json
 import logging
+import pickle as _pickle
 
+import pytest
 from hypothesis import assume, given
 from hypothesis import strategies as st
 
@@ -64,3 +67,47 @@ def test_redaction_property(secret):
     assert secret not in format(s, "")
     assert secret not in f"{s}"
     assert secret not in f"{s!r}"
+
+
+@pytest.mark.parametrize("bad", [123, None, b"bytes", ["list"], 1.5, object()])
+def test_non_str_init_raises(bad):
+    with pytest.raises(TypeError):
+        SecretValue(bad)
+
+
+def test_setattr_is_blocked():
+    s = SecretValue("hunter2")
+    with pytest.raises(AttributeError):
+        s._value = "swap"
+    with pytest.raises(AttributeError):
+        s.new_attr = "x"
+
+
+def test_delattr_is_blocked():
+    s = SecretValue("hunter2")
+    with pytest.raises(AttributeError):
+        del s._value
+
+
+def test_pickle_is_refused():
+    s = SecretValue("hunter2")
+    with pytest.raises(TypeError, match="not picklable"):
+        _pickle.dumps(s)
+
+
+def test_copy_preserves_opacity():
+    s = SecretValue("hunter2")
+    c = _copy.copy(s)
+    assert c is not s
+    assert c == s
+    assert "hunter2" not in repr(c)
+    assert c.expose() == "hunter2"
+
+
+def test_deepcopy_preserves_opacity():
+    s = SecretValue("hunter2")
+    c = _copy.deepcopy(s)
+    assert c is not s
+    assert c == s
+    assert "hunter2" not in repr(c)
+    assert c.expose() == "hunter2"
