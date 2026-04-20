@@ -1697,9 +1697,15 @@ File: `src/wazuh_mcp/observability/audit.py`
 ```python
 """Audit emitter — one structured JSON event per tool call.
 
-M1 writes JSON lines to a stream (stdout by default). M4 swaps this for
-pluggable sinks (file, HTTP, back-to-Wazuh) with async delivery + bounded
-disk ring-buffer.
+M1 writes JSON lines to a stream (stderr by default). The default is stderr,
+not stdout, because under the MCP stdio transport the server's stdout is the
+JSON-RPC wire: any bytes written to stdout that aren't a framed JSON-RPC
+message corrupt the protocol and hang/kill the session. Audit events must
+therefore go to stderr (or an injected sink) so they never interleave with
+protocol frames.
+
+M4 swaps this for pluggable sinks (file, HTTP, back-to-Wazuh) with async
+delivery + bounded disk ring-buffer.
 """
 
 from __future__ import annotations
@@ -1721,7 +1727,10 @@ def _hash_args(args: dict[str, Any]) -> str:
 
 class AuditEmitter:
     def __init__(self, stream: IO[str] | None = None) -> None:
-        self._stream = stream if stream is not None else sys.stdout
+        # Default to stderr, not stdout: under stdio MCP transport the server's
+        # stdout carries JSON-RPC frames, and interleaving audit events on
+        # stdout would corrupt the wire protocol.
+        self._stream = stream if stream is not None else sys.stderr
 
     def emit(
         self,
