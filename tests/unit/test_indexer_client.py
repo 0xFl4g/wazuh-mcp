@@ -74,3 +74,14 @@ async def test_aclose_is_idempotent():
     client = IndexerClient(base_url=BASE, user=user, password=pw, verify_tls=False)
     await client.aclose()
     await client.aclose()  # must not raise
+
+
+@pytest.mark.parametrize("bad_index", ["", "..", "../_nodes", "a/b", "wazuh/../_nodes"])
+async def test_search_rejects_path_traversal_in_index(bad_index):
+    user, pw = _credentials()
+    client = IndexerClient(base_url=BASE, user=user, password=pw, verify_tls=False)
+    try:
+        with pytest.raises(ValueError, match="invalid index name"):
+            await client.search(index=bad_index, query={})
+    finally:
+        await client.aclose()

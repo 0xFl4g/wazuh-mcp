@@ -42,6 +42,12 @@ class IndexerClient:
         self._closed = False
 
     async def search(self, *, index: str, query: dict[str, Any]) -> dict[str, Any]:
+        # Defense in depth: reject path-traversal or slash injection. httpx
+        # normalises "/../_nodes" into "/_nodes" before sending, so even a
+        # well-meaning caller handing a raw user string could silently hit a
+        # different endpoint.
+        if not index or "/" in index or ".." in index:
+            raise ValueError("invalid index name")
         resp = await self._client.post(f"/{index}/_search", json=query)
         if resp.status_code >= 400:
             raise map_http_error(resp)
