@@ -1,0 +1,21 @@
+name: ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  lint-and-unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+        with: { version: "latest" }
+      - name: Install
+        run: uv sync --frozen
+      - name: Ruff check
+        run: uv run ruff check .
+      - name: Ruff format check
+        run: uv run ruff format --check .
+      - name: Unit tests
+        run: uv run pytest -m "not integration" -v

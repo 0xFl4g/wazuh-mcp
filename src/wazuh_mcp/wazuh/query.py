@@ -75,9 +75,7 @@ def build_search_alerts_query(
     if min_level is not None and not (0 <= min_level <= 15):
         raise ValueError("min_level must be 0..15")
 
-    must: list[dict[str, Any]] = [
-        {"range": {"@timestamp": {"gte": f"now-{time_range}"}}}
-    ]
+    must: list[dict[str, Any]] = [{"range": {"@timestamp": {"gte": f"now-{time_range}"}}}]
     if min_level is not None:
         must.append({"range": {"rule.level": {"gte": min_level}}})
     if agent_id is not None:

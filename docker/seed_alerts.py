@@ -8,17 +8,17 @@ from __future__ import annotations
 
 import json
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import httpx
 
 BASE = "https://localhost:9200"
 AUTH = ("admin", "SecretPassword")
-INDEX = f"wazuh-alerts-4.x-{datetime.now(timezone.utc):%Y.%m.%d}"
+INDEX = f"wazuh-alerts-4.x-{datetime.now(UTC):%Y.%m.%d}"
 
 
 def _alert(idx: int, level: int, offset_min: int) -> dict:
-    ts = datetime.now(timezone.utc) - timedelta(minutes=offset_min)
+    ts = datetime.now(UTC) - timedelta(minutes=offset_min)
     return {
         "timestamp": ts.strftime("%Y-%m-%dT%H:%M:%S.000+0000"),
         "@timestamp": ts.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
@@ -27,8 +27,7 @@ def _alert(idx: int, level: int, offset_min: int) -> dict:
             "id": str(5700 + idx),
             "level": level,
             "description": f"synthetic rule {idx}",
-            "mitre": {"id": ["T1110.001"], "tactic": ["Credential Access"]}
-            if level >= 10 else {},
+            "mitre": {"id": ["T1110.001"], "tactic": ["Credential Access"]} if level >= 10 else {},
         },
         "location": "/var/log/auth.log",
         "decoder": {"name": "sshd"},

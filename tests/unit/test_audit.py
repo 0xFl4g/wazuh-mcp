@@ -6,8 +6,7 @@ from wazuh_mcp.observability.audit import AuditEmitter
 
 
 def _session() -> Session:
-    return Session(user_id="alice", tenant_id="acme",
-                   rbac_role="soc_analyst", auth_method="config")
+    return Session(user_id="alice", tenant_id="acme", rbac_role="soc_analyst", auth_method="config")
 
 
 def test_emits_one_json_line_per_call():

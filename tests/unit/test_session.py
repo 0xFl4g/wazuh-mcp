@@ -16,6 +16,7 @@ def test_session_holds_identity_and_tenant():
 
 def test_session_is_immutable():
     import dataclasses
+
     session = Session(
         user_id="alice",
         tenant_id="acme",

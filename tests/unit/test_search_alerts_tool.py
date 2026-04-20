@@ -16,8 +16,7 @@ BASE = "https://wazuh.test:9200"
 
 
 def _session():
-    return Session(user_id="alice", tenant_id="acme",
-                   rbac_role="soc_analyst", auth_method="config")
+    return Session(user_id="alice", tenant_id="acme", rbac_role="soc_analyst", auth_method="config")
 
 
 def _client():
@@ -36,8 +35,7 @@ def _hit(alert_id: str, level: int = 10):
             "timestamp": "2026-04-20T10:00:00.000+0000",
             "@timestamp": "2026-04-20T10:00:00.000Z",
             "agent": {"id": "001", "name": "web-01"},
-            "rule": {"id": "5710", "level": level,
-                     "description": "ssh brute-force"},
+            "rule": {"id": "5710", "level": level, "description": "ssh brute-force"},
         },
         "sort": ["2026-04-20T10:00:00.000Z"],
     }
@@ -47,8 +45,7 @@ async def test_search_alerts_returns_structured_and_text(httpx_mock: HTTPXMock):
     httpx_mock.add_response(
         url=f"{BASE}/wazuh-alerts-*/_search",
         method="POST",
-        json={"hits": {"total": {"value": 2},
-                       "hits": [_hit("a1"), _hit("a2")]}},
+        json={"hits": {"total": {"value": 2}, "hits": [_hit("a1"), _hit("a2")]}},
     )
     buf = io.StringIO()
     emitter = AuditEmitter(stream=buf)

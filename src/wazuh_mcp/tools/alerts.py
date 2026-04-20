@@ -28,11 +28,17 @@ from wazuh_mcp.wazuh.query import build_search_alerts_query
 class SearchAlertsArgs(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    time_range: Annotated[str, Field(description="Relative lookback, e.g. '1h', '24h', '7d'")] = "1h"
+    time_range: Annotated[str, Field(description="Relative lookback, e.g. '1h', '24h', '7d'")] = (
+        "1h"
+    )
     min_level: Annotated[int | None, Field(ge=0, le=15, description="Minimum rule.level")] = None
     agent_id: Annotated[str | None, Field(description="Filter to a single agent.id")] = None
-    size: Annotated[int, Field(ge=1, le=100, description="Max alerts to return (hard cap 100)")] = 25
-    cursor: Annotated[list[Any] | None, Field(description="Opaque search_after cursor from prior call")] = None
+    size: Annotated[int, Field(ge=1, le=100, description="Max alerts to return (hard cap 100)")] = (
+        25
+    )
+    cursor: Annotated[
+        list[Any] | None, Field(description="Opaque search_after cursor from prior call")
+    ] = None
 
 
 def _summarise(alerts: list[Alert], total: int) -> str:
@@ -67,15 +73,23 @@ async def search_alerts(
         body = await indexer.search(index="wazuh-alerts-*", query=query)
     except WazuhError as e:
         audit.emit(
-            session=session, tool="search_alerts", args=arg_dict, outcome="error",
-            result_count=0, duration_ms=int((time.monotonic() - started) * 1000),
+            session=session,
+            tool="search_alerts",
+            args=arg_dict,
+            outcome="error",
+            result_count=0,
+            duration_ms=int((time.monotonic() - started) * 1000),
             error_code=e.code,
         )
         raise
     except ValueError:
         audit.emit(
-            session=session, tool="search_alerts", args=arg_dict, outcome="error",
-            result_count=0, duration_ms=int((time.monotonic() - started) * 1000),
+            session=session,
+            tool="search_alerts",
+            args=arg_dict,
+            outcome="error",
+            result_count=0,
+            duration_ms=int((time.monotonic() - started) * 1000),
             error_code="invalid_query",
         )
         raise
@@ -92,14 +106,21 @@ async def search_alerts(
         truncated = len(alerts) == args.size
     except Exception:
         audit.emit(
-            session=session, tool="search_alerts", args=arg_dict, outcome="error",
-            result_count=0, duration_ms=int((time.monotonic() - started) * 1000),
+            session=session,
+            tool="search_alerts",
+            args=arg_dict,
+            outcome="error",
+            result_count=0,
+            duration_ms=int((time.monotonic() - started) * 1000),
             error_code="parse_error",
         )
         raise
 
     audit.emit(
-        session=session, tool="search_alerts", args=arg_dict, outcome="ok",
+        session=session,
+        tool="search_alerts",
+        args=arg_dict,
+        outcome="ok",
         result_count=len(alerts),
         duration_ms=int((time.monotonic() - started) * 1000),
     )

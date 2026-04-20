@@ -89,7 +89,10 @@ def build_app(cfg: AppConfig, audit: AuditEmitter | None = None) -> FastMCP:
         indexer = await _open_indexer()
         try:
             return await search_alerts(
-                args=args, session=cfg.session, indexer=indexer, audit=audit_emitter,
+                args=args,
+                session=cfg.session,
+                indexer=indexer,
+                audit=audit_emitter,
             )
         finally:
             await indexer.aclose()

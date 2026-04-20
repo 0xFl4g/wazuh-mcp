@@ -41,9 +41,7 @@ class SecretValue:
     def __hash__(self) -> int:
         # Hash the sha256, not the plaintext — prevents accidental
         # plaintext leak via hash-collision dictionaries or debuggers.
-        return int.from_bytes(
-            hashlib.sha256(self._value.encode()).digest()[:8], "big"
-        )
+        return int.from_bytes(hashlib.sha256(self._value.encode()).digest()[:8], "big")
 
     def __setattr__(self, name: str, value: object) -> None:
         raise AttributeError("SecretValue is immutable")

@@ -49,9 +49,7 @@ def test_source_projection_default():
 
 
 def test_search_after_cursor_applied():
-    q = build_search_alerts_query(
-        time_range="1h", cursor=["2026-04-20T10:00:00.000Z"]
-    )
+    q = build_search_alerts_query(time_range="1h", cursor=["2026-04-20T10:00:00.000Z"])
     assert q["search_after"] == ["2026-04-20T10:00:00.000Z"]
 
 
@@ -75,9 +73,7 @@ def test_combined_filters_produce_well_formed_query():
 
 
 def test_must_list_order_is_stable():
-    q = build_search_alerts_query(
-        time_range="1h", min_level=5, agent_id="001"
-    )
+    q = build_search_alerts_query(time_range="1h", min_level=5, agent_id="001")
     must = q["query"]["bool"]["must"]
     assert len(must) == 3
     # Order: @timestamp range, then rule.level range, then agent.id term

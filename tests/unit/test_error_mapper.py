@@ -6,8 +6,12 @@ from wazuh_mcp.wazuh.errors import WazuhError, map_http_error
 
 def _response(status: int, body: dict | str) -> httpx.Response:
     req = httpx.Request("GET", "https://example/9200/x/_search")
-    return httpx.Response(status, json=body if isinstance(body, dict) else None,
-                          text=body if isinstance(body, str) else None, request=req)
+    return httpx.Response(
+        status,
+        json=body if isinstance(body, dict) else None,
+        text=body if isinstance(body, str) else None,
+        request=req,
+    )
 
 
 def test_401_maps_to_auth_expired():
@@ -69,9 +73,10 @@ def test_safe_codes_enumerated():
     # A guard against accidental expansion of the safe-code set.
     from wazuh_mcp.wazuh.errors import SAFE_CODES
 
-    assert frozenset(
-        {"auth_expired", "forbidden", "rate_limited", "invalid_query", "upstream_error"}
-    ) == SAFE_CODES
+    assert (
+        frozenset({"auth_expired", "forbidden", "rate_limited", "invalid_query", "upstream_error"})
+        == SAFE_CODES
+    )
 
 
 def test_unsafe_code_rejected_at_construction():
