@@ -69,9 +69,9 @@ def test_safe_codes_enumerated():
     # A guard against accidental expansion of the safe-code set.
     from wazuh_mcp.wazuh.errors import SAFE_CODES
 
-    assert SAFE_CODES == frozenset(
+    assert frozenset(
         {"auth_expired", "forbidden", "rate_limited", "invalid_query", "upstream_error"}
-    )
+    ) == SAFE_CODES
 
 
 def test_unsafe_code_rejected_at_construction():

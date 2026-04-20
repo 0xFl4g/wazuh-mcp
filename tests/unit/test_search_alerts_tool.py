@@ -2,12 +2,14 @@ import io
 import json
 
 import pytest
+from pydantic import ValidationError
 from pytest_httpx import HTTPXMock
 
 from wazuh_mcp.auth.session import Session
 from wazuh_mcp.observability.audit import AuditEmitter
 from wazuh_mcp.secrets.value import SecretValue
 from wazuh_mcp.tools.alerts import SearchAlertsArgs, search_alerts
+from wazuh_mcp.wazuh.errors import WazuhError
 from wazuh_mcp.wazuh.indexer import IndexerClient
 
 BASE = "https://wazuh.test:9200"
@@ -96,7 +98,7 @@ async def test_search_alerts_audits_on_upstream_error(httpx_mock: HTTPXMock):
     buf = io.StringIO()
     client = _client()
     try:
-        with pytest.raises(Exception):
+        with pytest.raises(WazuhError):
             await search_alerts(
                 args=SearchAlertsArgs(time_range="1h"),
                 session=_session(),
@@ -108,6 +110,35 @@ async def test_search_alerts_audits_on_upstream_error(httpx_mock: HTTPXMock):
     event = json.loads(buf.getvalue().strip())
     assert event["outcome"] == "error"
     assert event["error_code"] == "rate_limited"
+
+
+async def test_search_alerts_audits_parse_error(httpx_mock: HTTPXMock):
+    # Malformed hit: missing rule entirely → Alert.from_hit raises ValidationError
+    bad_hit = {
+        "_id": "bad",
+        "_source": {"timestamp": "2026-04-20T10:00:00.000+0000"},
+        "sort": ["2026-04-20T10:00:00.000Z"],
+    }
+    httpx_mock.add_response(
+        url=f"{BASE}/wazuh-alerts-*/_search",
+        method="POST",
+        json={"hits": {"total": {"value": 1}, "hits": [bad_hit]}},
+    )
+    buf = io.StringIO()
+    client = _client()
+    try:
+        with pytest.raises(ValidationError):
+            await search_alerts(
+                args=SearchAlertsArgs(time_range="1h"),
+                session=_session(),
+                indexer=client,
+                audit=AuditEmitter(stream=buf),
+            )
+    finally:
+        await client.aclose()
+    event = json.loads(buf.getvalue().strip())
+    assert event["outcome"] == "error"
+    assert event["error_code"] == "parse_error"
 
 
 async def test_search_alerts_truncated_when_hits_equal_size(httpx_mock: HTTPXMock):

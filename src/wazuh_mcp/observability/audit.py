@@ -10,7 +10,7 @@ from __future__ import annotations
 import hashlib
 import json
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import IO, Any
 
 from wazuh_mcp.auth.session import Session
@@ -37,7 +37,7 @@ class AuditEmitter:
         error_code: str | None = None,
     ) -> None:
         event: dict[str, Any] = {
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
             "tool": tool,
             "user": session.user_id,
             "tenant": session.tenant_id,

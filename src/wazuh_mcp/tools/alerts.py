@@ -5,7 +5,7 @@ Establishes the pattern every M3 tool follows:
   2. Resolve session (caller supplies it; session is session-pinned).
   3. Build server-side DSL.
   4. Call indexer.
-  5. Map hits → strict Pydantic models.
+  5. Map hits → strict Pydantic models (parse errors audited).
   6. Emit structuredContent + short text summary.
   7. Audit every exit path.
 """
@@ -80,13 +80,23 @@ async def search_alerts(
         )
         raise
 
-    raw_hits = body.get("hits", {}).get("hits", [])
-    total = body.get("hits", {}).get("total", {}).get("value", 0)
-    alerts = [Alert.from_hit(h) for h in raw_hits]
-    next_cursor: list[Any] | None = None
-    if raw_hits and "sort" in raw_hits[-1]:
-        next_cursor = raw_hits[-1]["sort"]
-    truncated = len(alerts) == args.size
+    try:
+        raw_hits = body.get("hits", {}).get("hits", [])
+        hits_block = body.get("hits", {})
+        total_block = hits_block.get("total", {})
+        total = total_block.get("value", 0) if isinstance(total_block, dict) else int(total_block)
+        alerts = [Alert.from_hit(h) for h in raw_hits]
+        next_cursor: list[Any] | None = None
+        if raw_hits and "sort" in raw_hits[-1]:
+            next_cursor = raw_hits[-1]["sort"]
+        truncated = len(alerts) == args.size
+    except Exception:
+        audit.emit(
+            session=session, tool="search_alerts", args=arg_dict, outcome="error",
+            result_count=0, duration_ms=int((time.monotonic() - started) * 1000),
+            error_code="parse_error",
+        )
+        raise
 
     audit.emit(
         session=session, tool="search_alerts", args=arg_dict, outcome="ok",
