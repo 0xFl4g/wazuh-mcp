@@ -318,7 +318,7 @@ File: `tests/unit/test_secret_value.py`
 import json
 import logging
 
-from hypothesis import given
+from hypothesis import assume, given
 from hypothesis import strategies as st
 
 from wazuh_mcp.secrets.value import SecretValue
@@ -370,6 +370,11 @@ def test_hash_does_not_leak():
 
 @given(secret=st.text(min_size=1, max_size=200))
 def test_redaction_property(secret):
+    # Skip secrets that are substrings of the redaction template — those
+    # appear in formatted output by coincidence, not by leaking plaintext.
+    redaction_template = "SecretValue(<redacted>)"
+    assume(secret not in redaction_template)
+
     s = SecretValue(secret)
     assert secret not in repr(s)
     assert secret not in str(s)
