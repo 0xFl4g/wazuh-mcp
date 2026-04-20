@@ -83,3 +83,12 @@ def test_error_outcome_captures_code():
     event = json.loads(buf.getvalue())
     assert event["outcome"] == "error"
     assert event["error_code"] == "rate_limited"
+
+
+def test_default_stream_is_stderr_to_protect_stdio_transport():
+    # Under MCP stdio transport the server's stdout is the JSON-RPC wire.
+    # Default emitter must write to stderr so audit events don't corrupt it.
+    import sys
+
+    emitter = AuditEmitter()
+    assert emitter._stream is sys.stderr
