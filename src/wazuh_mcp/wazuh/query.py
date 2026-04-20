@@ -53,6 +53,24 @@ def build_search_alerts_query(
     size: int = DEFAULT_ALERT_SIZE,
     cursor: list[Any] | None = None,
 ) -> dict[str, Any]:
+    """Build an OpenSearch DSL query for the `wazuh-alerts-*` index.
+
+    Accepts a constrained, validated set of filters. Raw DSL is never
+    accepted — the returned dict is constructed server-side.
+
+    Args:
+        time_range: Relative lookback as '<int><m|h|d>' (e.g. '1h', '24h',
+            '7d'). Must resolve to strictly less than 30 days.
+        min_level: Minimum rule.level (0..15) to include, or None.
+        agent_id: Filter to a single agent.id (literal match), or None.
+        size: Max hits to return. Clamped to [1, 100]; default 25.
+        cursor: Opaque search_after cursor from a prior response, or
+            None. Empty list is treated the same as None.
+
+    Raises:
+        ValueError: if time_range is malformed or exceeds the lookback
+            cap, or if min_level is outside 0..15.
+    """
     _validate_time_range(time_range)
     if min_level is not None and not (0 <= min_level <= 15):
         raise ValueError("min_level must be 0..15")
@@ -72,6 +90,6 @@ def build_search_alerts_query(
         "_source": DEFAULT_ALERT_FIELDS,
         "terminate_after": TERMINATE_AFTER,
     }
-    if cursor is not None:
+    if cursor:  # treats None AND empty list as "no cursor"
         query["search_after"] = cursor
     return query

@@ -55,6 +55,42 @@ def test_search_after_cursor_applied():
     assert q["search_after"] == ["2026-04-20T10:00:00.000Z"]
 
 
+def test_combined_filters_produce_well_formed_query():
+    q = build_search_alerts_query(
+        time_range="24h",
+        min_level=10,
+        agent_id="007",
+        size=50,
+        cursor=["2026-04-20T10:00:00.000Z", "tiebreak"],
+    )
+    must = q["query"]["bool"]["must"]
+    # All three clauses present
+    assert any("range" in c and "@timestamp" in c["range"] for c in must)
+    assert any("range" in c and "rule.level" in c["range"] for c in must)
+    assert any("term" in c and c["term"].get("agent.id") == "007" for c in must)
+    assert q["size"] == 50
+    assert q["sort"] == [{"@timestamp": "desc"}]
+    assert q["terminate_after"] == 10_000
+    assert q["search_after"] == ["2026-04-20T10:00:00.000Z", "tiebreak"]
+
+
+def test_must_list_order_is_stable():
+    q = build_search_alerts_query(
+        time_range="1h", min_level=5, agent_id="001"
+    )
+    must = q["query"]["bool"]["must"]
+    assert len(must) == 3
+    # Order: @timestamp range, then rule.level range, then agent.id term
+    assert "range" in must[0] and "@timestamp" in must[0]["range"]
+    assert "range" in must[1] and "rule.level" in must[1]["range"]
+    assert "term" in must[2] and "agent.id" in must[2]["term"]
+
+
+def test_empty_cursor_is_ignored():
+    q = build_search_alerts_query(time_range="1h", cursor=[])
+    assert "search_after" not in q
+
+
 def test_terminate_after_enforced():
     q = build_search_alerts_query(time_range="1h")
     assert q["terminate_after"] == 10_000
