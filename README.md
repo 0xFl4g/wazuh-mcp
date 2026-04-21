@@ -74,10 +74,16 @@ Integration tests (docker compose required):
     uv run pytest -m integration
     docker compose -f docker/integration-compose.yml down -v
 
-## M1 scope
+## Milestones
 
-One tool, `search_alerts`, with filters: `time_range` (required, `1m` to `30d`), `min_level`, `agent_id`, `size` (hard-capped at 100), `cursor` for pagination. Results include `structuredContent` (alerts, total, next_cursor, truncated) and a short text summary.
+- **M1 (v0.1.0-m1)** — walking skeleton: stdio, single tenant, one tool.
+- **M2 (v0.2.0-m2)** — this release. Adds Streamable HTTP transport, OAuth 2.1 + API-key auth, multi-tenant session routing, per-tenant IndexerClient pool. Tool surface unchanged.
+- **M3 (planned)** — full tool surface (~14 tools), Server API client, resources, prompts.
+- **M4 (planned)** — production hardening: real secret backends, RBAC-aware tools, rate limits, OTel, write-tool scaffolding.
+- **M5 (planned)** — ship-gate: eval harness, Wazuh LTS matrix CI, cross-tenant leak suite, full docs.
 
-## Roadmap
+See `docs/superpowers/specs/` for full specs per milestone.
 
-See `docs/superpowers/specs/2026-04-20-wazuh-mcp-design.md` §9.
+## Deploying M2
+
+See `docs/deploy/m2-http.md` for the full remote-deployment guide (uvicorn + Caddy + OAuth IdP).
