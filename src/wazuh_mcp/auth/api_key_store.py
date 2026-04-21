@@ -58,8 +58,11 @@ class YamlApiKeyStore:
             if key_id in seen:
                 raise ValueError(f"{path}: duplicate key_id {key_id!r}")
             hashed = entry.get("hash")
-            if not isinstance(hashed, str) or not hashed.startswith("$argon2"):
-                raise ValueError(f"{path}: malformed argon2id hash for {key_id!r}")
+            if not isinstance(hashed, str) or not hashed.startswith("$argon2id$"):
+                raise ValueError(
+                    f"{path}: hash for {key_id!r} must be argon2id "
+                    f"(not argon2i or argon2d, per OWASP 2024)"
+                )
             seen[key_id] = entry
         self._records = seen
 
@@ -79,9 +82,7 @@ class YamlApiKeyStore:
                 return None
         try:
             self._hasher.verify(str(entry["hash"]), plaintext)
-        except argon_exc.VerifyMismatchError:
-            return None
-        except argon_exc.InvalidHashError:
+        except (argon_exc.VerificationError, argon_exc.InvalidHashError):
             return None
         return ApiKeyRecord(
             key_id=key_id,

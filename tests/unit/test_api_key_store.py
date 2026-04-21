@@ -115,3 +115,65 @@ api_keys:
     )
     with pytest.raises(ValueError, match="hash"):
         YamlApiKeyStore(f)
+
+
+def test_expires_at_field_absent_works_like_null(tmp_path: Path):
+    f = tmp_path / "api_keys.yaml"
+    f.write_text(
+        f"""
+api_keys:
+  - key_id: wzk_acme_01
+    hash: "{HASHER.hash('x')}"
+    tenant_id: acme
+    user_id: alice
+    rbac_role: soc_analyst
+    revoked: false
+""".strip()
+    )
+    store = YamlApiKeyStore(f)
+    rec = store.verify(key_id="wzk_acme_01", plaintext="x")
+    assert rec is not None
+
+
+def test_future_expires_at_accepted(tmp_path: Path):
+    f = tmp_path / "api_keys.yaml"
+    _write(f, "x", expires_at="2099-01-01T00:00:00Z")
+    store = YamlApiKeyStore(f)
+    rec = store.verify(key_id="wzk_acme_01", plaintext="x")
+    assert rec is not None
+
+
+def test_non_utc_timezone_in_expires_at(tmp_path: Path):
+    f = tmp_path / "api_keys.yaml"
+    # Future time in +05:00 offset: still in the future.
+    _write(f, "x", expires_at="2099-01-01T00:00:00+05:00")
+    store = YamlApiKeyStore(f)
+    rec = store.verify(key_id="wzk_acme_01", plaintext="x")
+    assert rec is not None
+
+
+def test_malformed_expires_at_rejected(tmp_path: Path):
+    f = tmp_path / "api_keys.yaml"
+    _write(f, "x", expires_at="not-an-iso-date")
+    store = YamlApiKeyStore(f)
+    # Malformed ISO parse fails, collapse to None.
+    assert store.verify(key_id="wzk_acme_01", plaintext="x") is None
+
+
+def test_argon2i_hash_rejected_at_load(tmp_path: Path):
+    # Manually craft an argon2i hash string that starts with $argon2i$ not $argon2id$.
+    f = tmp_path / "api_keys.yaml"
+    f.write_text(
+        """
+api_keys:
+  - key_id: wzk_acme_01
+    hash: "$argon2i$v=19$m=65536,t=3,p=4$c29tZXNhbHQ$somehash"
+    tenant_id: acme
+    user_id: alice
+    rbac_role: soc_analyst
+    revoked: false
+    expires_at: null
+""".strip()
+    )
+    with pytest.raises(ValueError, match="argon2id"):
+        YamlApiKeyStore(f)
