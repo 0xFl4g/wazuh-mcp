@@ -152,6 +152,12 @@ def build_asgi_app(
     }
     handler = _metadata_handler_factory(metadata)
 
+    # FastMCP's streamable_http_app() exposes its handler at `/mcp`, so we
+    # mount it at the root. The explicit Routes above are declared first
+    # and take precedence over the Mount for their own paths. We also
+    # forward the sub-app's lifespan so FastMCP's session-manager task group
+    # starts up — otherwise requests raise
+    # "Task group is not initialized. Make sure to use run()."
     base = Starlette(
         routes=[
             Route(
@@ -161,8 +167,9 @@ def build_asgi_app(
             ),
             Route("/healthz", _healthz, methods=["GET"]),
             Route("/readyz", _readyz, methods=["GET"]),
-            Mount("/mcp", app=mcp_streamable),
-        ]
+            Mount("/", app=mcp_streamable),
+        ],
+        lifespan=mcp_streamable.router.lifespan_context,
     )
 
     return SessionMiddleware(base, factory=factory, protect_paths=["/mcp"])
