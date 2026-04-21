@@ -39,6 +39,13 @@ class OAuthSessionFactory(SessionFactory):
         clock_skew_seconds: int = 30,
         jwks: JwksCache | None = None,
     ) -> None:
+        # Structural invariant: 'none' is never a valid JWT signing algorithm,
+        # even if an operator tries to configure it. joserfc's jwt.decode would
+        # otherwise accept unsigned tokens when "none" is in the allowlist.
+        if any(a.lower() == "none" for a in algorithms):
+            raise ValueError("'none' algorithm is never permitted")
+        if not algorithms:
+            raise ValueError("at least one algorithm must be configured")
         self._issuer = issuer.rstrip("/")
         self._audience = audience
         self._algorithms = list(algorithms)

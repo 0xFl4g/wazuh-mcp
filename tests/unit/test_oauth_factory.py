@@ -174,3 +174,54 @@ async def test_rbac_claims_priority(seed_oidc, jwt_factory, index):
     finally:
         await factory.aclose()
     assert session.rbac_role == "first"
+
+
+async def test_aud_as_list_accepted(seed_oidc, jwt_factory, index):
+    factory = OAuthSessionFactory(
+        issuer=ISS, audience=AUD, algorithms=["RS256"], rbac_claims=["wazuh_mcp_role"],
+        issuer_index=index,
+    )
+    try:
+        token = jwt_factory.make(
+            sub="alice",
+            extra={
+                "tenant_id": "acme",
+                "wazuh_mcp_role": "soc_analyst",
+                "aud": [AUD, "other-aud"],
+            },
+        )
+        session = await factory.build({"headers": {"Authorization": f"Bearer {token}"}})
+    finally:
+        await factory.aclose()
+    assert session.user_id == "alice"
+    assert session.auth_method == "oauth"
+
+
+async def test_missing_sub_raises_missing_claim(seed_oidc, jwt_factory, index):
+    factory = OAuthSessionFactory(
+        issuer=ISS, audience=AUD, algorithms=["RS256"], rbac_claims=["wazuh_mcp_role"],
+        issuer_index=index,
+    )
+    try:
+        token = jwt_factory.make(sub="", extra={"tenant_id": "acme", "wazuh_mcp_role": "x"})
+        with pytest.raises(MissingClaim) as excinfo:
+            await factory.build({"headers": {"Authorization": f"Bearer {token}"}})
+    finally:
+        await factory.aclose()
+    assert excinfo.value.claim_name == "sub"
+
+
+def test_none_algorithm_rejected_at_construction(index):
+    with pytest.raises(ValueError, match="none"):
+        OAuthSessionFactory(
+            issuer=ISS, audience=AUD, algorithms=["RS256", "none"],
+            rbac_claims=["wazuh_mcp_role"], issuer_index=index,
+        )
+
+
+def test_empty_algorithms_rejected_at_construction(index):
+    with pytest.raises(ValueError, match="at least one"):
+        OAuthSessionFactory(
+            issuer=ISS, audience=AUD, algorithms=[],
+            rbac_claims=["wazuh_mcp_role"], issuer_index=index,
+        )
