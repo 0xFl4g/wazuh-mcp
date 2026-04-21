@@ -1,5 +1,3 @@
-import pytest
-
 from wazuh_mcp.auth.errors import (
     ApiKeyRevoked,
     AuthError,

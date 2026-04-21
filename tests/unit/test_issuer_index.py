@@ -20,8 +20,10 @@ def test_lookup_returns_tenant_config():
     a = _tenant("acme", "https://idp.example.com/realms/acme")
     b = _tenant("beta", "https://idp.example.com/realms/beta")
     idx = IssuerIndex([a, b])
-    assert idx.get("https://idp.example.com/realms/acme").tenant_id == "acme"
-    assert idx.get("https://idp.example.com/realms/beta").tenant_id == "beta"
+    got_a = idx.get("https://idp.example.com/realms/acme")
+    got_b = idx.get("https://idp.example.com/realms/beta")
+    assert got_a is not None and got_a.tenant_id == "acme"
+    assert got_b is not None and got_b.tenant_id == "beta"
 
 
 def test_unknown_issuer_returns_none():
@@ -44,5 +46,7 @@ def test_duplicate_issuers_rejected():
 def test_issuer_trailing_slash_ignored():
     a = _tenant("acme", "https://idp.example.com/realms/acme/")
     idx = IssuerIndex([a])
-    assert idx.get("https://idp.example.com/realms/acme").tenant_id == "acme"
-    assert idx.get("https://idp.example.com/realms/acme/").tenant_id == "acme"
+    got_plain = idx.get("https://idp.example.com/realms/acme")
+    got_slash = idx.get("https://idp.example.com/realms/acme/")
+    assert got_plain is not None and got_plain.tenant_id == "acme"
+    assert got_slash is not None and got_slash.tenant_id == "acme"

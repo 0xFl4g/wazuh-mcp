@@ -25,22 +25,22 @@ class AuthError(Exception):
         return self.public_message
 
 
-class InvalidToken(AuthError):
+class InvalidToken(AuthError):  # noqa: N818 - public auth error name, not *Error suffix
     http_status = 401
     public_message = "invalid_token"
 
 
-class ExpiredToken(AuthError):
+class ExpiredToken(AuthError):  # noqa: N818 - public auth error name, not *Error suffix
     http_status = 401
     public_message = "invalid_token"
 
 
-class UnknownIssuer(AuthError):
+class UnknownIssuer(AuthError):  # noqa: N818 - public auth error name, not *Error suffix
     http_status = 401
     public_message = "unauthorized"
 
 
-class MissingClaim(AuthError):
+class MissingClaim(AuthError):  # noqa: N818 - public auth error name, not *Error suffix
     http_status = 403
     public_message = "forbidden"
 
@@ -49,6 +49,6 @@ class MissingClaim(AuthError):
         self.claim_name = claim_name
 
 
-class ApiKeyRevoked(AuthError):
+class ApiKeyRevoked(AuthError):  # noqa: N818 - public auth error name, not *Error suffix
     http_status = 401
     public_message = "unauthorized"
