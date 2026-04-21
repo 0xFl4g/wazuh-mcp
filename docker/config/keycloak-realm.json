@@ -1,0 +1,74 @@
+{
+  "realm": "wazuh-mcp",
+  "enabled": true,
+  "accessTokenLifespan": 300,
+  "sslRequired": "none",
+  "users": [
+    {
+      "username": "alice",
+      "enabled": true,
+      "email": "alice@example.com",
+      "credentials": [{ "type": "password", "value": "alicepw", "temporary": false }],
+      "attributes": { "wazuh_mcp_role": ["soc_analyst"] },
+      "realmRoles": ["default-roles-wazuh-mcp"]
+    },
+    {
+      "username": "bob",
+      "enabled": true,
+      "email": "bob@example.com",
+      "credentials": [{ "type": "password", "value": "bobpw", "temporary": false }],
+      "attributes": { "wazuh_mcp_role": ["admin"] },
+      "realmRoles": ["default-roles-wazuh-mcp"]
+    }
+  ],
+  "clients": [
+    {
+      "clientId": "wazuh-mcp-client",
+      "enabled": true,
+      "secret": "test-client-secret",
+      "publicClient": false,
+      "directAccessGrantsEnabled": true,
+      "serviceAccountsEnabled": false,
+      "standardFlowEnabled": true,
+      "redirectUris": ["http://localhost:*"],
+      "webOrigins": ["+"],
+      "protocolMappers": [
+        {
+          "name": "aud-mapper",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "config": {
+            "included.client.audience": "wazuh-mcp-api",
+            "id.token.claim": "false",
+            "access.token.claim": "true"
+          }
+        },
+        {
+          "name": "wazuh_mcp_role-mapper",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "config": {
+            "user.attribute": "wazuh_mcp_role",
+            "claim.name": "wazuh_mcp_role",
+            "jsonType.label": "String",
+            "id.token.claim": "false",
+            "access.token.claim": "true",
+            "multivalued": "false"
+          }
+        },
+        {
+          "name": "tenant_id-literal",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-hardcoded-claim-mapper",
+          "config": {
+            "claim.name": "tenant_id",
+            "claim.value": "local",
+            "jsonType.label": "String",
+            "id.token.claim": "false",
+            "access.token.claim": "true"
+          }
+        }
+      ]
+    }
+  ]
+}
