@@ -28,9 +28,7 @@ class JwtFactory:
     _key: RSAKey = field(init=False)
 
     def __post_init__(self) -> None:
-        self._key = RSAKey.generate_key(
-            2048, parameters={"kid": self.kid, "alg": "RS256"}
-        )
+        self._key = RSAKey.generate_key(2048, parameters={"kid": self.kid, "alg": "RS256"})
 
     def make(
         self,
@@ -55,9 +53,7 @@ class JwtFactory:
         header = {"alg": "RS256", "kid": self.kid, "typ": "JWT"}
         return jwt.encode(header, claims, self._key)
 
-    def make_expired(
-        self, *, sub: str, extra: dict[str, Any] | None = None
-    ) -> str:
+    def make_expired(self, *, sub: str, extra: dict[str, Any] | None = None) -> str:
         return self.make(sub=sub, extra=extra, exp_delta=-60)
 
     def make_with_header(

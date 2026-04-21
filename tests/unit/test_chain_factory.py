@@ -16,7 +16,10 @@ class _Recorder(SessionFactory):
     async def build(self, ctx: RequestContext) -> Session:
         self.calls.append(ctx)
         return Session(
-            user_id=self.name, tenant_id="t", rbac_role="r", auth_method="oauth",
+            user_id=self.name,
+            tenant_id="t",
+            rbac_role="r",
+            auth_method="oauth",
         )
 
 

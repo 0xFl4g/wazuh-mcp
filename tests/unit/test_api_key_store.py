@@ -80,14 +80,14 @@ def test_duplicate_key_ids_rejected(tmp_path: Path):
         f"""
 api_keys:
   - key_id: wzk_acme_01
-    hash: "{HASHER.hash('a')}"
+    hash: "{HASHER.hash("a")}"
     tenant_id: acme
     user_id: alice
     rbac_role: soc_analyst
     revoked: false
     expires_at: null
   - key_id: wzk_acme_01
-    hash: "{HASHER.hash('b')}"
+    hash: "{HASHER.hash("b")}"
     tenant_id: beta
     user_id: bob
     rbac_role: admin
@@ -123,7 +123,7 @@ def test_expires_at_field_absent_works_like_null(tmp_path: Path):
         f"""
 api_keys:
   - key_id: wzk_acme_01
-    hash: "{HASHER.hash('x')}"
+    hash: "{HASHER.hash("x")}"
     tenant_id: acme
     user_id: alice
     rbac_role: soc_analyst

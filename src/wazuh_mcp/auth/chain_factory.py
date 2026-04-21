@@ -22,7 +22,7 @@ class ChainSessionFactory(SessionFactory):
         auth = headers.get("Authorization") or headers.get("authorization") or ""
         if not auth.startswith("Bearer "):
             raise InvalidToken(detail="missing bearer")
-        token = auth[len("Bearer "):].strip()
+        token = auth[len("Bearer ") :].strip()
         if token.startswith("wzk_") and "." in token:
             return await self._api_key.build(ctx)
         if token.count(".") == 2:

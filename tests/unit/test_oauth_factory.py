@@ -47,7 +47,10 @@ def seed_oidc(httpx_mock: HTTPXMock, jwt_factory: JwtFactory) -> None:
 
 async def test_valid_token_with_tenant_claim(seed_oidc, jwt_factory, index):
     factory = OAuthSessionFactory(
-        issuer=ISS, audience=AUD, algorithms=["RS256"], rbac_claims=["wazuh_mcp_role"],
+        issuer=ISS,
+        audience=AUD,
+        algorithms=["RS256"],
+        rbac_claims=["wazuh_mcp_role"],
         issuer_index=index,
     )
     try:
@@ -63,11 +66,12 @@ async def test_valid_token_with_tenant_claim(seed_oidc, jwt_factory, index):
     assert session.auth_method == "oauth"
 
 
-async def test_valid_token_falls_back_to_iss_when_no_tenant_claim(
-    seed_oidc, jwt_factory, index
-):
+async def test_valid_token_falls_back_to_iss_when_no_tenant_claim(seed_oidc, jwt_factory, index):
     factory = OAuthSessionFactory(
-        issuer=ISS, audience=AUD, algorithms=["RS256"], rbac_claims=["groups"],
+        issuer=ISS,
+        audience=AUD,
+        algorithms=["RS256"],
+        rbac_claims=["groups"],
         issuer_index=index,
     )
     try:
@@ -81,7 +85,10 @@ async def test_valid_token_falls_back_to_iss_when_no_tenant_claim(
 
 async def test_claim_and_iss_mismatch_rejected(seed_oidc, jwt_factory, index):
     factory = OAuthSessionFactory(
-        issuer=ISS, audience=AUD, algorithms=["RS256"], rbac_claims=["wazuh_mcp_role"],
+        issuer=ISS,
+        audience=AUD,
+        algorithms=["RS256"],
+        rbac_claims=["wazuh_mcp_role"],
         issuer_index=index,
     )
     try:
@@ -96,7 +103,10 @@ async def test_claim_and_iss_mismatch_rejected(seed_oidc, jwt_factory, index):
 
 async def test_missing_authorization_header_raises(index):
     factory = OAuthSessionFactory(
-        issuer=ISS, audience=AUD, algorithms=["RS256"], rbac_claims=["wazuh_mcp_role"],
+        issuer=ISS,
+        audience=AUD,
+        algorithms=["RS256"],
+        rbac_claims=["wazuh_mcp_role"],
         issuer_index=index,
     )
     try:
@@ -108,7 +118,10 @@ async def test_missing_authorization_header_raises(index):
 
 async def test_expired_token_raises_expired(seed_oidc, jwt_factory, index):
     factory = OAuthSessionFactory(
-        issuer=ISS, audience=AUD, algorithms=["RS256"], rbac_claims=["wazuh_mcp_role"],
+        issuer=ISS,
+        audience=AUD,
+        algorithms=["RS256"],
+        rbac_claims=["wazuh_mcp_role"],
         issuer_index=index,
     )
     try:
@@ -122,7 +135,10 @@ async def test_expired_token_raises_expired(seed_oidc, jwt_factory, index):
 async def test_wrong_issuer_rejected(seed_oidc, jwt_factory, index):
     wrong = JwtFactory(issuer="https://attacker.example", audience=AUD)
     factory = OAuthSessionFactory(
-        issuer=ISS, audience=AUD, algorithms=["RS256"], rbac_claims=["wazuh_mcp_role"],
+        issuer=ISS,
+        audience=AUD,
+        algorithms=["RS256"],
+        rbac_claims=["wazuh_mcp_role"],
         issuer_index=index,
     )
     try:
@@ -135,8 +151,11 @@ async def test_wrong_issuer_rejected(seed_oidc, jwt_factory, index):
 
 async def test_wrong_audience_rejected(seed_oidc, jwt_factory, index):
     factory = OAuthSessionFactory(
-        issuer=ISS, audience="different-aud", algorithms=["RS256"],
-        rbac_claims=["wazuh_mcp_role"], issuer_index=index,
+        issuer=ISS,
+        audience="different-aud",
+        algorithms=["RS256"],
+        rbac_claims=["wazuh_mcp_role"],
+        issuer_index=index,
     )
     try:
         token = jwt_factory.make(sub="alice", extra={"tenant_id": "acme"})
@@ -149,7 +168,10 @@ async def test_wrong_audience_rejected(seed_oidc, jwt_factory, index):
 async def test_no_tenant_resolution_raises_missing_claim(seed_oidc, jwt_factory):
     empty_index = IssuerIndex([])
     factory = OAuthSessionFactory(
-        issuer=ISS, audience=AUD, algorithms=["RS256"], rbac_claims=["wazuh_mcp_role"],
+        issuer=ISS,
+        audience=AUD,
+        algorithms=["RS256"],
+        rbac_claims=["wazuh_mcp_role"],
         issuer_index=empty_index,
     )
     try:
@@ -162,8 +184,11 @@ async def test_no_tenant_resolution_raises_missing_claim(seed_oidc, jwt_factory)
 
 async def test_rbac_claims_priority(seed_oidc, jwt_factory, index):
     factory = OAuthSessionFactory(
-        issuer=ISS, audience=AUD, algorithms=["RS256"],
-        rbac_claims=["wazuh_mcp_role", "roles", "groups"], issuer_index=index,
+        issuer=ISS,
+        audience=AUD,
+        algorithms=["RS256"],
+        rbac_claims=["wazuh_mcp_role", "roles", "groups"],
+        issuer_index=index,
     )
     try:
         token = jwt_factory.make(
@@ -178,7 +203,10 @@ async def test_rbac_claims_priority(seed_oidc, jwt_factory, index):
 
 async def test_aud_as_list_accepted(seed_oidc, jwt_factory, index):
     factory = OAuthSessionFactory(
-        issuer=ISS, audience=AUD, algorithms=["RS256"], rbac_claims=["wazuh_mcp_role"],
+        issuer=ISS,
+        audience=AUD,
+        algorithms=["RS256"],
+        rbac_claims=["wazuh_mcp_role"],
         issuer_index=index,
     )
     try:
@@ -199,7 +227,10 @@ async def test_aud_as_list_accepted(seed_oidc, jwt_factory, index):
 
 async def test_missing_sub_raises_missing_claim(seed_oidc, jwt_factory, index):
     factory = OAuthSessionFactory(
-        issuer=ISS, audience=AUD, algorithms=["RS256"], rbac_claims=["wazuh_mcp_role"],
+        issuer=ISS,
+        audience=AUD,
+        algorithms=["RS256"],
+        rbac_claims=["wazuh_mcp_role"],
         issuer_index=index,
     )
     try:
@@ -214,14 +245,20 @@ async def test_missing_sub_raises_missing_claim(seed_oidc, jwt_factory, index):
 def test_none_algorithm_rejected_at_construction(index):
     with pytest.raises(ValueError, match="none"):
         OAuthSessionFactory(
-            issuer=ISS, audience=AUD, algorithms=["RS256", "none"],
-            rbac_claims=["wazuh_mcp_role"], issuer_index=index,
+            issuer=ISS,
+            audience=AUD,
+            algorithms=["RS256", "none"],
+            rbac_claims=["wazuh_mcp_role"],
+            issuer_index=index,
         )
 
 
 def test_empty_algorithms_rejected_at_construction(index):
     with pytest.raises(ValueError, match="at least one"):
         OAuthSessionFactory(
-            issuer=ISS, audience=AUD, algorithms=[],
-            rbac_claims=["wazuh_mcp_role"], issuer_index=index,
+            issuer=ISS,
+            audience=AUD,
+            algorithms=[],
+            rbac_claims=["wazuh_mcp_role"],
+            issuer_index=index,
         )

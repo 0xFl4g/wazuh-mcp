@@ -22,13 +22,11 @@ class ApiKeySessionFactory(SessionFactory):
         auth = headers.get("Authorization") or headers.get("authorization") or ""
         if not auth.startswith("Bearer "):
             raise InvalidToken(detail="missing bearer")
-        token = auth[len("Bearer "):].strip()
+        token = auth[len("Bearer ") :].strip()
         if not token.startswith("wzk_") or "." not in token:
             raise InvalidToken(detail="malformed api key")
         key_id, _, plaintext = token.rpartition(".")
-        record: ApiKeyRecord | None = self._store.verify(
-            key_id=key_id, plaintext=plaintext
-        )
+        record: ApiKeyRecord | None = self._store.verify(key_id=key_id, plaintext=plaintext)
         if record is None:
             raise InvalidToken(detail="key verification failed")
         return Session(

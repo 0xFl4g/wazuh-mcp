@@ -26,9 +26,13 @@ JWKS = f"{ISS}/jwks"
 
 def _tenant(tid: str) -> TenantConfig:
     return TenantConfig(
-        tenant_id=tid, indexer_url="https://x:9200", verify_tls=False,
-        ca_bundle_path=None, default_rbac_role="soc_analyst",
-        oauth_issuer=ISS, oauth_audience=AUD,
+        tenant_id=tid,
+        indexer_url="https://x:9200",
+        verify_tls=False,
+        ca_bundle_path=None,
+        default_rbac_role="soc_analyst",
+        oauth_issuer=ISS,
+        oauth_audience=AUD,
     )
 
 
@@ -45,12 +49,12 @@ def jf() -> JwtFactory:
 def factory(httpx_mock: HTTPXMock, jf: JwtFactory) -> OAuthSessionFactory:
     # Marked optional so tests that reject tokens before JWKS fetch don't fail
     # the "all mocks consumed" assertion.
-    httpx_mock.add_response(
-        url=DISCO, json=jf.oidc_discovery(JWKS), is_optional=True
-    )
+    httpx_mock.add_response(url=DISCO, json=jf.oidc_discovery(JWKS), is_optional=True)
     httpx_mock.add_response(url=JWKS, json=jf.jwks(), is_optional=True)
     return OAuthSessionFactory(
-        issuer=ISS, audience=AUD, algorithms=["RS256"],
+        issuer=ISS,
+        audience=AUD,
+        algorithms=["RS256"],
         rbac_claims=["wazuh_mcp_role"],
         issuer_index=IssuerIndex([_tenant("acme")]),
     )
@@ -64,9 +68,14 @@ async def test_alg_none_rejected(factory, jf):
     """
     header = {"alg": "none", "kid": jf.kid, "typ": "JWT"}
     payload = {
-        "iss": ISS, "sub": "alice", "aud": AUD,
-        "iat": 0, "exp": 9999999999, "nbf": 0,
-        "tenant_id": "acme", "wazuh_mcp_role": "soc_analyst",
+        "iss": ISS,
+        "sub": "alice",
+        "aud": AUD,
+        "iat": 0,
+        "exp": 9999999999,
+        "nbf": 0,
+        "tenant_id": "acme",
+        "wazuh_mcp_role": "soc_analyst",
     }
     tampered = (
         _b64u(json.dumps(header).encode())
@@ -95,12 +104,12 @@ async def test_signature_tampered_rejected(factory, jf):
 async def test_algorithm_allowlist_enforced(httpx_mock: HTTPXMock):
     """Factory only accepts ES256 but token is RS256."""
     jf = JwtFactory(issuer=ISS, audience=AUD)
-    httpx_mock.add_response(
-        url=DISCO, json=jf.oidc_discovery(JWKS), is_optional=True
-    )
+    httpx_mock.add_response(url=DISCO, json=jf.oidc_discovery(JWKS), is_optional=True)
     httpx_mock.add_response(url=JWKS, json=jf.jwks(), is_optional=True)
     factory = OAuthSessionFactory(
-        issuer=ISS, audience=AUD, algorithms=["ES256"],
+        issuer=ISS,
+        audience=AUD,
+        algorithms=["ES256"],
         rbac_claims=["wazuh_mcp_role"],
         issuer_index=IssuerIndex([_tenant("acme")]),
     )
@@ -126,12 +135,11 @@ async def test_log_poisoning_in_sub(factory, jf):
     handles sanitisation downstream."""
     evil_sub = "alice\x1b[31m\nHIJACK"
     token = jf.make(
-        sub=evil_sub, extra={"tenant_id": "acme", "wazuh_mcp_role": "a"},
+        sub=evil_sub,
+        extra={"tenant_id": "acme", "wazuh_mcp_role": "a"},
     )
     try:
-        session = await factory.build(
-            {"headers": {"Authorization": f"Bearer {token}"}}
-        )
+        session = await factory.build({"headers": {"Authorization": f"Bearer {token}"}})
     finally:
         await factory.aclose()
     assert session.user_id == evil_sub

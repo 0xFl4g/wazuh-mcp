@@ -17,7 +17,7 @@ def store(tmp_path: Path) -> YamlApiKeyStore:
         f"""
 api_keys:
   - key_id: wzk_acme_01
-    hash: "{HASHER.hash('secret-token')}"
+    hash: "{HASHER.hash("secret-token")}"
     tenant_id: acme
     user_id: alice
     rbac_role: soc_analyst

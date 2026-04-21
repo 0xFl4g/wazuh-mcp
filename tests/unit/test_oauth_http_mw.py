@@ -16,7 +16,10 @@ class _FixedFactory(SessionFactory):
 
             raise InvalidToken()
         return Session(
-            user_id="alice", tenant_id="acme", rbac_role="soc_analyst", auth_method="oauth",
+            user_id="alice",
+            tenant_id="acme",
+            rbac_role="soc_analyst",
+            auth_method="oauth",
         )
 
 

@@ -156,9 +156,7 @@ def load_http_config(config_dir: Path) -> HttpAppConfig:
         issuer=oauth_cfg["issuer"],
         audience=oauth_cfg["audience"],
         algorithms=list(oauth_cfg.get("algorithms", ["RS256"])),
-        rbac_claims=list(
-            oauth_cfg.get("rbac_claims", ["wazuh_mcp_role", "groups", "roles"])
-        ),
+        rbac_claims=list(oauth_cfg.get("rbac_claims", ["wazuh_mcp_role", "groups", "roles"])),
         issuer_index=issuer_index,
         clock_skew_seconds=int(oauth_cfg.get("clock_skew_seconds", 30)),
         jwks=JwksCache(issuer=oauth_cfg["issuer"]),
@@ -244,6 +242,4 @@ def run_http(config_dir: Path) -> None:
     server_yaml = yaml.safe_load((config_dir / "server.yaml").read_text()) or {}
     bind = server_yaml["http"]["bind"]
     host, _, port = bind.partition(":")
-    uvicorn.run(
-        asgi, host=host, port=int(port), proxy_headers=True, log_level="info"
-    )
+    uvicorn.run(asgi, host=host, port=int(port), proxy_headers=True, log_level="info")

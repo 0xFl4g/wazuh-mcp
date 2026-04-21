@@ -71,9 +71,7 @@ class SessionMiddleware(BaseHTTPMiddleware):
             # so strict parsers (browsers, PKCE libs) don't reject the challenge.
             err_code = "insufficient_scope" if e.http_status == 403 else "invalid_token"
             body = {"error": e.public_message}
-            headers = {
-                "WWW-Authenticate": f'Bearer realm="mcp", error="{err_code}"'
-            }
+            headers = {"WWW-Authenticate": f'Bearer realm="mcp", error="{err_code}"'}
             return JSONResponse(body, status_code=e.http_status, headers=headers)
 
         token = set_current_session(session)
@@ -92,9 +90,7 @@ def _metadata_handler_factory(
     return _oauth_protected_resource
 
 
-def build_metadata_endpoint(
-    *, resource_url: str, authorization_server: str
-) -> Starlette:
+def build_metadata_endpoint(*, resource_url: str, authorization_server: str) -> Starlette:
     metadata = {
         "resource": resource_url,
         "authorization_servers": [authorization_server],
