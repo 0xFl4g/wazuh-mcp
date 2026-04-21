@@ -32,7 +32,7 @@
       "secret": "test-client-secret",
       "publicClient": false,
       "directAccessGrantsEnabled": true,
-      "serviceAccountsEnabled": false,
+      "serviceAccountsEnabled": true,
       "standardFlowEnabled": true,
       "redirectUris": ["http://localhost:*"],
       "webOrigins": ["+"],
