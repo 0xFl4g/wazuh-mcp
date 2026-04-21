@@ -1,8 +1,9 @@
 """JWKS cache with discovery + refresh-on-unknown-kid.
 
-One cache per MCP deployment (single IdP). TTL-bounded (10 min), refresh
-happens on first miss. Further unknown-kid hits within the same TTL window
-do NOT retrigger refresh - cost-capped at once per TTL.
+One cache per MCP deployment (single IdP). NOT a TTL expiry cache —
+known kids are served indefinitely. A miss on an unknown kid triggers
+at most ONE refresh per 10-minute window, so key rotation is picked up
+without slamming the IdP under a storm of forged-kid tokens.
 """
 
 from __future__ import annotations
@@ -20,7 +21,6 @@ DEFAULT_TIMEOUT = httpx.Timeout(connect=5.0, read=5.0, write=5.0, pool=5.0)
 class JwksCache:
     __slots__ = (
         "_client",
-        "_fetched_at",
         "_issuer",
         "_jwks_uri",
         "_keys",
@@ -39,7 +39,6 @@ class JwksCache:
         self._issuer: str = issuer.rstrip("/")
         self._jwks_uri: str | None = None
         self._keys: dict[str, dict[str, Any]] = {}
-        self._fetched_at: float = 0.0
         self._ttl: int = ttl_seconds
         self._client: httpx.AsyncClient = httpx.AsyncClient(timeout=timeout)
         self._lock: asyncio.Lock = asyncio.Lock()
@@ -83,7 +82,6 @@ class JwksCache:
             body = resp.json()
             new_keys = {k["kid"]: k for k in body.get("keys", []) if "kid" in k}
             self._keys = new_keys
-            self._fetched_at = time.monotonic()
 
     async def aclose(self) -> None:
         await self._client.aclose()
