@@ -21,6 +21,7 @@ dev = [
     "pytest-httpx>=0.30",
     "hypothesis>=6.100",
     "ruff>=0.5.0",
+    "ty>=0.0.32",
 ]
 
 [build-system]
@@ -53,4 +54,17 @@ ignore = ["E501"]
 [tool.ty.environment]
 python = ".venv"
 python-version = "3.12"
-root = ["src", "tests"]
+
+[tool.ty.src]
+include = ["src/**/*.py", "tests/**/*.py"]
+
+# Tests intentionally trigger validation errors (e.g., passing bare strings to
+# pydantic HttpUrl fields, unknown kwargs to forbid-extra models, mutating
+# frozen dataclasses) to prove the invariants hold. Downgrade ty noise there.
+[[tool.ty.overrides]]
+include = ["tests/**/*.py"]
+
+[tool.ty.overrides.rules]
+invalid-argument-type = "ignore"
+unknown-argument = "ignore"
+invalid-assignment = "ignore"

@@ -24,7 +24,19 @@ class YamlSecretStore:
         for tenant, kv in data.items():
             if not isinstance(kv, dict):
                 raise ValueError(f"Tenant {tenant!r} must be a mapping")
-            self._data[str(tenant)] = {str(k): str(v) for k, v in kv.items()}
+            tenant_secrets: dict[str, str] = {}
+            for k, v in kv.items():
+                # Reject non-string values. YAML coercion would turn `null` into
+                # the string "None" and `1234` into "1234" — both are footguns
+                # that produce confusing downstream auth failures. Operators who
+                # want these must quote them explicitly in YAML.
+                if not isinstance(v, str):
+                    raise ValueError(
+                        f"secret {k!r} for tenant {tenant!r} must be a string; "
+                        f"got {type(v).__name__}. Quote the value in YAML."
+                    )
+                tenant_secrets[str(k)] = v
+            self._data[str(tenant)] = tenant_secrets
 
     async def get(self, tenant_id: str, key: str) -> SecretValue:
         if tenant_id not in self._data:

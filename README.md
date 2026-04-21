@@ -70,9 +70,7 @@ Lint + format:
 
 Integration tests (docker compose required):
 
-    docker compose -f docker/integration-compose.yml up -d
-    # wait for wazuh-indexer healthcheck
-    uv run python docker/seed_alerts.py
+    docker/bootstrap.sh        # up, security-init, seed
     uv run pytest -m integration
     docker compose -f docker/integration-compose.yml down -v
 

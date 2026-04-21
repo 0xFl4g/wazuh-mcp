@@ -47,3 +47,31 @@ async def test_unknown_key_raises(secrets_file):
     store = YamlSecretStore(secrets_file)
     with pytest.raises(KeyError, match="missing"):
         await store.get("acme", "missing")
+
+
+def test_non_string_value_is_rejected(tmp_path: Path):
+    # `null` and bare numbers are the classic footgun: YAML coerces them to
+    # non-string values, which silently break downstream auth.
+    p = tmp_path / "secrets.yaml"
+    p.write_text(
+        """
+acme:
+  indexer_user: admin
+  indexer_password: null
+""".strip()
+    )
+    with pytest.raises(ValueError, match="must be a string"):
+        YamlSecretStore(p)
+
+
+def test_numeric_value_is_rejected(tmp_path: Path):
+    p = tmp_path / "secrets.yaml"
+    p.write_text(
+        """
+acme:
+  indexer_user: admin
+  indexer_password: 1234
+""".strip()
+    )
+    with pytest.raises(ValueError, match="must be a string"):
+        YamlSecretStore(p)
