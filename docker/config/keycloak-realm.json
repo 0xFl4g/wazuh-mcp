@@ -8,6 +8,8 @@
       "username": "alice",
       "enabled": true,
       "email": "alice@example.com",
+      "emailVerified": true,
+      "requiredActions": [],
       "credentials": [{ "type": "password", "value": "alicepw", "temporary": false }],
       "attributes": { "wazuh_mcp_role": ["soc_analyst"] },
       "realmRoles": ["default-roles-wazuh-mcp"]
@@ -16,6 +18,8 @@
       "username": "bob",
       "enabled": true,
       "email": "bob@example.com",
+      "emailVerified": true,
+      "requiredActions": [],
       "credentials": [{ "type": "password", "value": "bobpw", "temporary": false }],
       "attributes": { "wazuh_mcp_role": ["admin"] },
       "realmRoles": ["default-roles-wazuh-mcp"]
