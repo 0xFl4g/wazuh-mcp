@@ -6,7 +6,7 @@ request and propagate the returned Session via contextvars to tool handlers.
 
 from __future__ import annotations
 
-from typing import Any, Protocol, TypedDict, runtime_checkable
+from typing import Protocol, TypedDict, runtime_checkable
 
 from wazuh_mcp.auth.session import Session
 

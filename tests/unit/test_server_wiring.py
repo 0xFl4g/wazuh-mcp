@@ -4,6 +4,8 @@ from pathlib import Path
 import pytest
 from pytest_httpx import HTTPXMock
 
+from wazuh_mcp.auth.config_factory import ConfigSessionFactory
+from wazuh_mcp.auth.factory import SessionFactory
 from wazuh_mcp.observability.audit import AuditEmitter
 from wazuh_mcp.server import build_app, load_config
 
@@ -36,11 +38,10 @@ user_id: alice
     return tmp_path
 
 
-def test_load_config_builds_session_and_config(config_dir):
+def test_load_config_builds_factory(config_dir):
     cfg = load_config(config_dir)
-    assert cfg.session.tenant_id == "acme"
-    assert cfg.session.user_id == "alice"
-    assert cfg.session.auth_method == "config"
+    assert isinstance(cfg.factory, SessionFactory)
+    assert isinstance(cfg.factory, ConfigSessionFactory)
     assert cfg.tenant.tenant_id == "acme"
 
 
@@ -57,24 +58,13 @@ async def test_registered_search_alerts_executes_against_mocked_indexer(
     httpx_mock.add_response(
         url="https://wazuh.acme.test:9200/wazuh-alerts-*/_search",
         method="POST",
-        json={
-            "hits": {
-                "total": {"value": 0},
-                "hits": [],
-            }
-        },
+        json={"hits": {"total": {"value": 0}, "hits": []}},
     )
     cfg = load_config(config_dir)
     audit_buf = io.StringIO()
     app = build_app(cfg, audit=AuditEmitter(stream=audit_buf))
-
-    # FastMCP stores the registered function on the Tool object; invoke it directly
     tool = next(t for t in app._tool_manager.list_tools() if t.name == "search_alerts")
     result = await tool.fn(time_range="1h")
-
     assert result["structuredContent"]["total"] == 0
     assert "0 alerts" in result["text"]
-    # Audit went to the injected stream, NOT stdout
-    audit_line = audit_buf.getvalue().strip()
-    assert audit_line, "audit event should have been written"
-    assert '"tool": "search_alerts"' in audit_line
+    assert '"tool": "search_alerts"' in audit_buf.getvalue()

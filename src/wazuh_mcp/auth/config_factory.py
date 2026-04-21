@@ -14,6 +14,8 @@ from wazuh_mcp.tenancy.config import TenantConfig
 class ConfigSessionFactory(SessionFactory):
     __slots__ = ("_session",)
 
+    _session: Session
+
     def __init__(self, *, user_id: str, tenant: TenantConfig) -> None:
         object.__setattr__(
             self,

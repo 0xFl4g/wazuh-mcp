@@ -1,8 +1,7 @@
 """MCP server wiring.
 
-M1: stdio only, single session loaded from config at startup.
-M2 replaces `load_config` with an OAuth/API-key entry that yields a
-Session per client connection.
+M1 path: stdio + ConfigSessionFactory (single-session from config).
+M2 path: see transport/http.py for HTTP mode (uses OAuth/ApiKey factories).
 """
 
 from __future__ import annotations
@@ -15,18 +14,24 @@ from typing import Any
 import yaml
 from mcp.server.fastmcp import FastMCP
 
-from wazuh_mcp.auth.session import Session
+from wazuh_mcp.auth.config_factory import ConfigSessionFactory
+from wazuh_mcp.auth.factory import SessionFactory
 from wazuh_mcp.observability.audit import AuditEmitter
 from wazuh_mcp.secrets.yaml_driver import YamlSecretStore
 from wazuh_mcp.tenancy.config import TenantConfig
 from wazuh_mcp.tenancy.registry import YamlTenantRegistry
 from wazuh_mcp.tools.alerts import SearchAlertsArgs, search_alerts
+from wazuh_mcp.transport.session_ctx import (
+    CURRENT_SESSION,
+    current_session,
+    set_current_session,
+)
 from wazuh_mcp.wazuh.indexer import IndexerClient
 
 
 @dataclass(frozen=True)
 class AppConfig:
-    session: Session
+    factory: SessionFactory
     tenant: TenantConfig
     secrets: YamlSecretStore
 
@@ -39,13 +44,8 @@ def load_config(config_dir: Path) -> AppConfig:
     tenant_id = server_cfg["active_tenant"]
     user_id = server_cfg.get("user_id", "local")
     tenant = registry.get(tenant_id)
-    session = Session(
-        user_id=user_id,
-        tenant_id=tenant_id,
-        rbac_role=tenant.default_rbac_role,
-        auth_method="config",
-    )
-    return AppConfig(session=session, tenant=tenant, secrets=secrets)
+    factory = ConfigSessionFactory(user_id=user_id, tenant=tenant)
+    return AppConfig(factory=factory, tenant=tenant, secrets=secrets)
 
 
 def build_app(cfg: AppConfig, audit: AuditEmitter | None = None) -> FastMCP:
@@ -86,16 +86,27 @@ def build_app(cfg: AppConfig, audit: AuditEmitter | None = None) -> FastMCP:
             size=size,
             cursor=cursor,
         )
+        # stdio has no middleware, so build + set contextvar here.
+        # HTTP mode will set the contextvar earlier, in which case current_session
+        # already works and we skip the set.
+        try:
+            session = current_session()
+            token = None
+        except LookupError:
+            session = await cfg.factory.build({})
+            token = set_current_session(session)
         indexer = await _open_indexer()
         try:
             return await search_alerts(
                 args=args,
-                session=cfg.session,
+                session=session,
                 indexer=indexer,
                 audit=audit_emitter,
             )
         finally:
             await indexer.aclose()
+            if token is not None:
+                CURRENT_SESSION.reset(token)
 
     return app
 

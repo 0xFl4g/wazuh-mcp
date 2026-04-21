@@ -11,9 +11,7 @@ from wazuh_mcp.transport.session_ctx import (
 
 
 def _session(user: str, tenant: str) -> Session:
-    return Session(
-        user_id=user, tenant_id=tenant, rbac_role="soc_analyst", auth_method="oauth"
-    )
+    return Session(user_id=user, tenant_id=tenant, rbac_role="soc_analyst", auth_method="oauth")
 
 
 def test_current_session_raises_outside_context():

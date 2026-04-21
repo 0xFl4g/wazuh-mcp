@@ -1,6 +1,3 @@
-from pathlib import Path
-from typing import Any
-
 import pytest
 
 from wazuh_mcp.auth.config_factory import ConfigSessionFactory
