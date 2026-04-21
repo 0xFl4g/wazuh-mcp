@@ -51,7 +51,8 @@ class SessionMiddleware(BaseHTTPMiddleware):
         request: Request,
         call_next: Callable[[Request], Awaitable[Response]],
     ) -> Response:
-        if not any(request.url.path.startswith(p) for p in self._protect):
+        path = request.url.path
+        if not any(path == p or path.startswith(p.rstrip("/") + "/") for p in self._protect):
             return await call_next(request)
 
         # ASGI/HTTP header names are case-insensitive; Starlette lowercases them.
@@ -65,8 +66,14 @@ class SessionMiddleware(BaseHTTPMiddleware):
         try:
             session = await self._factory.build(ctx)
         except AuthError as e:
+            # RFC 6750 defines only three valid `error` codes: invalid_request,
+            # invalid_token, insufficient_scope. Map http_status to compliant codes
+            # so strict parsers (browsers, PKCE libs) don't reject the challenge.
+            err_code = "insufficient_scope" if e.http_status == 403 else "invalid_token"
             body = {"error": e.public_message}
-            headers = {"WWW-Authenticate": f'Bearer error="{e.public_message}"'}
+            headers = {
+                "WWW-Authenticate": f'Bearer realm="mcp", error="{err_code}"'
+            }
             return JSONResponse(body, status_code=e.http_status, headers=headers)
 
         token = set_current_session(session)

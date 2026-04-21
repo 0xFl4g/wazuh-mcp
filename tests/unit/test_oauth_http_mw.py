@@ -53,3 +53,21 @@ def test_contextvar_cleared_on_exception():
     tc.get("/probe")  # 401
     resp = tc.get("/probe", headers={"Authorization": "Bearer dummy"})
     assert resp.status_code == 200
+
+
+def test_missing_claim_returns_403_with_insufficient_scope():
+    from wazuh_mcp.auth.errors import MissingClaim
+
+    class _TenantlessFactory(SessionFactory):
+        async def build(self, ctx: RequestContext) -> Session:
+            raise MissingClaim("tenant_id")
+
+    base = Starlette(routes=[Route("/probe", _session_endpoint)])
+    app = SessionMiddleware(base, factory=_TenantlessFactory(), protect_paths=["/probe"])
+    client = TestClient(app)
+    resp = client.get("/probe", headers={"Authorization": "Bearer dummy"})
+    assert resp.status_code == 403
+    assert resp.json() == {"error": "forbidden"}
+    www_auth = resp.headers["WWW-Authenticate"]
+    assert 'error="insufficient_scope"' in www_auth
+    assert 'realm="mcp"' in www_auth
