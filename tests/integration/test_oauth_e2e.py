@@ -171,3 +171,58 @@ def test_mcp_rejects_garbage_bearer(mcp_http_server):
         timeout=5,
     )
     assert resp.status_code == 401
+
+
+# ---- Full-protocol smoke (MCP Python client over Streamable HTTP) ----
+#
+# These drive the real MCP client SDK through the OAuth-gated /mcp endpoint
+# so ``uv run pytest -m integration`` doubles as a full end-to-end smoke:
+# token mint -> transport -> middleware -> tool dispatch -> indexer query.
+
+
+@pytest.mark.integration
+async def test_mcp_tools_list_includes_search_alerts(mcp_http_server, keycloak_token):
+    from mcp import ClientSession
+    from mcp.client.streamable_http import streamablehttp_client
+
+    token = keycloak_token()
+    async with (
+        streamablehttp_client(
+            f"{MCP_URL}/mcp",
+            headers={"Authorization": f"Bearer {token}"},
+        ) as (read, write, _get_session_id),
+        ClientSession(read, write) as session,
+    ):
+        await session.initialize()
+        tools = await session.list_tools()
+
+    names = [t.name for t in tools.tools]
+    assert "search_alerts" in names, f"tools/list missing search_alerts: {names}"
+
+
+@pytest.mark.integration
+async def test_mcp_tools_call_search_alerts_returns_seeded_data(mcp_http_server, keycloak_token):
+    from mcp import ClientSession
+    from mcp.client.streamable_http import streamablehttp_client
+
+    token = keycloak_token()
+    async with (
+        streamablehttp_client(
+            f"{MCP_URL}/mcp",
+            headers={"Authorization": f"Bearer {token}"},
+        ) as (read, write, _get_session_id),
+        ClientSession(read, write) as session,
+    ):
+        await session.initialize()
+        result = await session.call_tool("search_alerts", {"time_range": "24h", "size": 5})
+
+    assert not result.isError, f"tools/call returned error: {result}"
+    # The tool return is currently double-wrapped: FastMCP uses the tool's
+    # return dict as CallToolResult.structuredContent, and that dict has its
+    # own "structuredContent" + "text" keys. Drill in accordingly.
+    outer = result.structuredContent
+    assert outer is not None, "structuredContent missing from CallToolResult"
+    inner = outer.get("structuredContent", outer)
+    assert inner.get("total", 0) >= 1, f"no alerts returned: {inner}"
+    assert isinstance(inner.get("alerts"), list)
+    assert len(inner["alerts"]) >= 1
