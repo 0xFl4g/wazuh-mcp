@@ -13,7 +13,7 @@ from datetime import UTC, datetime, timedelta
 import httpx
 
 BASE = "https://localhost:9200"
-AUTH = ("admin", "SecretPassword")
+AUTH = ("admin", "admin")
 INDEX = f"wazuh-alerts-4.x-{datetime.now(UTC):%Y.%m.%d}"
 
 

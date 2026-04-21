@@ -1,34 +1,79 @@
 # Single-node Wazuh stack for integration tests.
 # Pinned versions — bump intentionally.
+#
+# The Wazuh 4.9 indexer image does NOT self-generate demo certs; it expects
+# them bind-mounted at /usr/share/wazuh-indexer/certs/. A one-shot generator
+# service writes the certs to ./config/wazuh_indexer_ssl_certs/ on first boot
+# and the indexer starts once that completes.
+#
+# Images are linux/amd64 only; on arm64 hosts they run under emulation
+# (~2x slower boot).
 services:
+  generator:
+    image: wazuh/wazuh-certs-generator:0.0.2
+    platform: linux/amd64
+    hostname: wazuh-certs-generator
+    # The stock /entrypoint.sh tries to chown/chmod the bind mount at the end;
+    # on macOS Docker Desktop those calls fail even though the certs are
+    # already written. Run the generator then unconditionally exit 0 so the
+    # one-shot dependency resolves.
+    # Run the cert generation steps manually (not the stock /entrypoint.sh)
+    # so we can skip the trailing chown/chmod that always fails on macOS
+    # Docker Desktop bind mounts. Then copy node-1.* to indexer.* so a plain
+    # directory bind-mount works on the indexer side.
+    entrypoint:
+      - bash
+      - -c
+      - |
+        set -e
+        cd /tmp
+        curl -sfLo wazuh-certs-tool.sh https://packages.wazuh.com/4.8/wazuh-certs-tool.sh
+        chmod +x wazuh-certs-tool.sh
+        # The cert tool looks for config.yml next to itself and writes output
+        # to ./wazuh-certificates/ (relative to its own location).
+        cp /config/certs.yml /tmp/config.yml
+        bash /tmp/wazuh-certs-tool.sh -A
+        cp -f /tmp/wazuh-certificates/*.pem /tmp/wazuh-certificates/*.key /certificates/
+        # Rename node-1 → indexer so a plain directory bind-mount works on
+        # the indexer side (opensearch.yml refers to certs/indexer.pem).
+        cp -f /certificates/node-1.pem /certificates/indexer.pem
+        cp -f /certificates/node-1-key.pem /certificates/indexer-key.pem
+        chmod 644 /certificates/*.pem /certificates/*.key || true
+        ls /certificates/indexer.pem /certificates/root-ca.pem /certificates/admin.pem >/dev/null
+    volumes:
+      - ./config/wazuh_indexer_ssl_certs/:/certificates/
+      - ./config/certs.yml:/config/certs.yml:ro
+
   wazuh-indexer:
     image: wazuh/wazuh-indexer:4.9.0
+    platform: linux/amd64
     hostname: wazuh-indexer
+    depends_on:
+      generator:
+        condition: service_completed_successfully
     environment:
       - OPENSEARCH_JAVA_OPTS=-Xms1g -Xmx1g
       - bootstrap.memory_lock=true
-      - DISABLE_INSTALL_DEMO_CONFIG=false
     ulimits:
       memlock: { soft: -1, hard: -1 }
       nofile: { soft: 65536, hard: 65536 }
     ports:
       - "9200:9200"
+    volumes:
+      # OPENSEARCH_PATH_CONF=/usr/share/wazuh-indexer; Java SecurityManager
+      # only grants cert reads relative to that path, so we override
+      # opensearch.yml to use relative `certs/*.pem` and mount certs there.
+      # Bind-mount the directory (not individual files) — individual file
+      # mounts on Docker Desktop macOS break the security plugin's isDirectory
+      # checks.
+      - ./config/opensearch.yml:/usr/share/wazuh-indexer/opensearch.yml:ro
+      - ./config/wazuh_indexer_ssl_certs/:/usr/share/wazuh-indexer/certs/:ro
     healthcheck:
-      test: ["CMD-SHELL", "curl -sk -u admin:SecretPassword https://localhost:9200/_cluster/health | grep -q status"]
-      interval: 5s
-      timeout: 3s
-      retries: 40
-
-  wazuh-manager:
-    image: wazuh/wazuh-manager:4.9.0
-    hostname: wazuh-manager
-    depends_on:
-      wazuh-indexer:
-        condition: service_healthy
-    environment:
-      - INDEXER_URL=https://wazuh-indexer:9200
-      - INDEXER_USERNAME=admin
-      - INDEXER_PASSWORD=SecretPassword
-      - FILEBEAT_SSL_VERIFICATION_MODE=none
-    ports:
-      - "55000:55000"
+      # Demo internal_users.yml ships admin:admin. Check for a real green/yellow
+      # status rather than just the substring "status" (which also appears in
+      # 401/uninitialised-security responses).
+      test: ["CMD-SHELL", "curl -sk -u admin:admin https://localhost:9200/_cluster/health | grep -qE '\"status\":\"(green|yellow)\"'"]
+      interval: 10s
+      timeout: 5s
+      retries: 60
+      start_period: 90s

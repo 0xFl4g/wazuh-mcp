@@ -1,0 +1,7 @@
+# Node name and admin DN must match the baked-in opensearch.yml in the
+# wazuh-indexer image (node-1, CN=admin/OU=Wazuh/O=Wazuh/L=California/C=US),
+# otherwise the security plugin rejects them.
+nodes:
+  indexer:
+    - name: node-1
+      ip: "127.0.0.1"

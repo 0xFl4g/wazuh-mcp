@@ -35,7 +35,7 @@ async def indexer():
     client = IndexerClient(
         base_url="https://localhost:9200",
         user=SecretValue("admin"),
-        password=SecretValue("SecretPassword"),
+        password=SecretValue("admin"),
         verify_tls=False,
     )
     try:

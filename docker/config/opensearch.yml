@@ -1,0 +1,59 @@
+# Override of the stock wazuh-indexer opensearch.yml.
+# Cert paths are relative to OPENSEARCH_PATH_CONF (/usr/share/wazuh-indexer),
+# which is the only location Java's SecurityManager grants read to the
+# opensearch-security plugin. The stock config uses absolute /etc/wazuh-indexer
+# paths which fail with AccessControlException when mounted from a bind.
+network.host: "0.0.0.0"
+node.name: "node-1"
+# cluster.initial_master_nodes is incompatible with discovery.type: single-node
+cluster.name: "wazuh-cluster"
+node.max_local_storage_nodes: "3"
+path.data: /var/lib/wazuh-indexer
+path.logs: /var/log/wazuh-indexer
+
+# seccomp isn't available on Docker Desktop macOS / arm64 emulation, so
+# disable the system-call filter bootstrap check. This is safe for a local
+# integration-test fixture only.
+bootstrap.system_call_filter: false
+# discovery.type single-node disables the other bootstrap checks and avoids
+# waiting for a non-existent second master.
+discovery.type: single-node
+
+plugins.security.ssl.http.pemcert_filepath: certs/indexer.pem
+plugins.security.ssl.http.pemkey_filepath: certs/indexer-key.pem
+plugins.security.ssl.http.pemtrustedcas_filepath: certs/root-ca.pem
+plugins.security.ssl.transport.pemcert_filepath: certs/indexer.pem
+plugins.security.ssl.transport.pemkey_filepath: certs/indexer-key.pem
+plugins.security.ssl.transport.pemtrustedcas_filepath: certs/root-ca.pem
+plugins.security.ssl.http.enabled: true
+plugins.security.ssl.transport.enforce_hostname_verification: false
+plugins.security.ssl.transport.resolve_hostname: false
+
+plugins.security.authcz.admin_dn:
+  - "CN=admin,OU=Wazuh,O=Wazuh,L=California,C=US"
+plugins.security.check_snapshot_restore_write_privileges: true
+plugins.security.enable_snapshot_restore_privilege: true
+plugins.security.nodes_dn:
+  - "CN=node-1,OU=Wazuh,O=Wazuh,L=California,C=US"
+plugins.security.restapi.roles_enabled:
+  - "all_access"
+  - "security_rest_api_access"
+
+plugins.security.system_indices.enabled: true
+plugins.security.system_indices.indices:
+  - ".plugins-ml-model"
+  - ".plugins-ml-task"
+  - ".opendistro-alerting-config"
+  - ".opendistro-alerting-alert*"
+  - ".opendistro-anomaly-results*"
+  - ".opendistro-anomaly-detector*"
+  - ".opendistro-anomaly-checkpoints"
+  - ".opendistro-anomaly-detection-state"
+  - ".opendistro-reports-*"
+  - ".opensearch-notifications-*"
+  - ".opensearch-notebooks"
+  - ".opensearch-observability"
+  - ".opendistro-asynchronous-search-response*"
+  - ".replication-metadata-store"
+
+compatibility.override_main_response_version: true
