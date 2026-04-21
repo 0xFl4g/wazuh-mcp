@@ -6,7 +6,6 @@ M2 path: see transport/http.py for HTTP mode (uses OAuth/ApiKey factories).
 
 from __future__ import annotations
 
-import asyncio
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -26,6 +25,7 @@ from wazuh_mcp.transport.session_ctx import (
     current_session,
     set_current_session,
 )
+from wazuh_mcp.transport.stdio import run_stdio as _run_stdio
 from wazuh_mcp.wazuh.indexer import IndexerClient
 
 
@@ -114,4 +114,4 @@ def build_app(cfg: AppConfig, audit: AuditEmitter | None = None) -> FastMCP:
 def run_stdio(config_dir: Path) -> None:
     cfg = load_config(config_dir)
     app = build_app(cfg)
-    asyncio.run(app.run_stdio_async())
+    _run_stdio(app)
