@@ -47,3 +47,41 @@ def test_tenant_id_charset():
             ca_bundle_path=None,
             default_rbac_role="soc_analyst",
         )
+
+
+def test_oauth_fields_optional():
+    cfg = TenantConfig(
+        tenant_id="acme",
+        indexer_url="https://wazuh.acme.example:9200",
+        verify_tls=True,
+        ca_bundle_path=None,
+        default_rbac_role="soc_analyst",
+    )
+    assert cfg.oauth_issuer is None
+    assert cfg.oauth_audience is None
+
+
+def test_oauth_fields_accepted():
+    cfg = TenantConfig(
+        tenant_id="acme",
+        indexer_url="https://wazuh.acme.example:9200",
+        verify_tls=True,
+        ca_bundle_path=None,
+        default_rbac_role="soc_analyst",
+        oauth_issuer="https://idp.example.com/realms/msp",
+        oauth_audience="wazuh-mcp-api",
+    )
+    assert str(cfg.oauth_issuer).startswith("https://idp.example.com")
+    assert cfg.oauth_audience == "wazuh-mcp-api"
+
+
+def test_oauth_issuer_must_be_url():
+    with pytest.raises(ValidationError):
+        TenantConfig(
+            tenant_id="acme",
+            indexer_url="https://x:9200",
+            verify_tls=True,
+            ca_bundle_path=None,
+            default_rbac_role="soc_analyst",
+            oauth_issuer="not-a-url",
+        )

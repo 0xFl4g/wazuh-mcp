@@ -22,3 +22,5 @@ class TenantConfig(BaseModel):
     verify_tls: bool = True
     ca_bundle_path: Path | None = None
     default_rbac_role: str
+    oauth_issuer: HttpUrl | None = None
+    oauth_audience: str | None = None
