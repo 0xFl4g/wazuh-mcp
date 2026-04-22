@@ -24,3 +24,8 @@ class TenantConfig(BaseModel):
     default_rbac_role: str
     oauth_issuer: HttpUrl | None = None
     oauth_audience: str | None = None
+    # Name of the OAuth claim that carries the Wazuh user identity for
+    # run_as attribution. When the claim is present in a verified bearer,
+    # Session.wazuh_user is populated and the Server API calls pass run_as.
+    # When absent, calls run as the tenant's service account.
+    wazuh_user_claim: str = "wazuh_user"

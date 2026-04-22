@@ -85,3 +85,26 @@ def test_oauth_issuer_must_be_url():
             default_rbac_role="soc_analyst",
             oauth_issuer="not-a-url",
         )
+
+
+def _base_cfg() -> dict:
+    return {
+        "tenant_id": "t1",
+        "indexer_url": "https://indexer.example",
+        "default_rbac_role": "soc_analyst",
+    }
+
+
+def test_wazuh_user_claim_defaults_to_wazuh_user():
+    cfg = TenantConfig.model_validate(_base_cfg())
+    assert cfg.wazuh_user_claim == "wazuh_user"
+
+
+def test_wazuh_user_claim_custom():
+    cfg = TenantConfig.model_validate({**_base_cfg(), "wazuh_user_claim": "uid"})
+    assert cfg.wazuh_user_claim == "uid"
+
+
+def test_tenant_config_rejects_unknown_fields():
+    with pytest.raises(ValidationError):
+        TenantConfig.model_validate({**_base_cfg(), "not_a_field": True})
