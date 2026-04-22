@@ -72,13 +72,14 @@ def build_app(cfg: AppConfig, audit: AuditEmitter | None = None) -> FastMCP:
         )
 
     @app.tool(
-        name="search_alerts",
+        name="alerts.search_alerts",
         description=(
             "Search Wazuh alerts by time range and filters. Use when the user "
             "asks about security events, detections, or incidents within a "
             "time window. Returns a paginated list; use `cursor` from a prior "
             "response to continue."
         ),
+        meta={"toolset": "alerts"},
     )
     async def _search_alerts(
         time_range: str = "1h",
@@ -86,7 +87,7 @@ def build_app(cfg: AppConfig, audit: AuditEmitter | None = None) -> FastMCP:
         agent_id: str | None = None,
         size: int = 25,
         cursor: list[Any] | None = None,
-    ) -> dict[str, Any]:
+    ):
         args = SearchAlertsArgs(
             time_range=time_range,
             min_level=min_level,
@@ -185,13 +186,14 @@ def build_http_app(http_cfg: HttpAppConfig, audit: AuditEmitter | None = None):
     mcp_app = FastMCP(name="wazuh-mcp")
 
     @mcp_app.tool(
-        name="search_alerts",
+        name="alerts.search_alerts",
         description=(
             "Search Wazuh alerts by time range and filters. Use when the user "
             "asks about security events, detections, or incidents within a "
             "time window. Returns a paginated list; use `cursor` from a prior "
             "response to continue."
         ),
+        meta={"toolset": "alerts"},
     )
     async def _search_alerts(
         time_range: str = "1h",
@@ -199,7 +201,7 @@ def build_http_app(http_cfg: HttpAppConfig, audit: AuditEmitter | None = None):
         agent_id: str | None = None,
         size: int = 25,
         cursor: list[Any] | None = None,
-    ) -> dict[str, Any]:
+    ):
         args = SearchAlertsArgs(
             time_range=time_range,
             min_level=min_level,

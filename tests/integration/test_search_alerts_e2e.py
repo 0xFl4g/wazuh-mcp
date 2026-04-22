@@ -24,9 +24,10 @@ async def test_search_alerts_returns_seeded_data(session, audit, indexer):
         indexer=indexer,
         audit=audit,
     )
-    assert result["structuredContent"]["total"] >= 5
-    assert len(result["structuredContent"]["alerts"]) >= 1
-    assert result["structuredContent"]["next_cursor"] is not None
+    # result is now SearchAlertsResult, not a dict.
+    assert result.total >= 5
+    assert len(result.alerts) >= 1
+    assert result.next_cursor is not None
 
 
 @pytest.mark.integration
@@ -37,8 +38,8 @@ async def test_search_alerts_min_level_filters(session, audit, indexer):
         indexer=indexer,
         audit=audit,
     )
-    for alert in result["structuredContent"]["alerts"]:
-        assert alert["rule"]["level"] >= 12
+    for alert in result.alerts:
+        assert alert.rule.level >= 12
 
 
 @pytest.mark.integration
@@ -49,7 +50,7 @@ async def test_search_alerts_cursor_paginates(session, audit, indexer):
         indexer=indexer,
         audit=audit,
     )
-    cursor = first["structuredContent"]["next_cursor"]
+    cursor = first.next_cursor
     assert cursor is not None
 
     second = await search_alerts(
@@ -58,6 +59,6 @@ async def test_search_alerts_cursor_paginates(session, audit, indexer):
         indexer=indexer,
         audit=audit,
     )
-    first_ids = {a["id"] for a in first["structuredContent"]["alerts"]}
-    second_ids = {a["id"] for a in second["structuredContent"]["alerts"]}
+    first_ids = {a.id for a in first.alerts}
+    second_ids = {a.id for a in second.alerts}
     assert first_ids.isdisjoint(second_ids), "pagination returned overlapping alerts"

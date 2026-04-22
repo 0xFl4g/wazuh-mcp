@@ -41,7 +41,7 @@ def _hit(alert_id: str, level: int = 10):
     }
 
 
-async def test_search_alerts_returns_structured_and_text(httpx_mock: HTTPXMock):
+async def test_search_alerts_returns_structured_result(httpx_mock: HTTPXMock):
     httpx_mock.add_response(
         url=f"{BASE}/wazuh-alerts-*/_search",
         method="POST",
@@ -60,13 +60,12 @@ async def test_search_alerts_returns_structured_and_text(httpx_mock: HTTPXMock):
     finally:
         await client.aclose()
 
-    assert result["structuredContent"]["total"] == 2
-    assert len(result["structuredContent"]["alerts"]) == 2
-    assert result["structuredContent"]["next_cursor"] == ["2026-04-20T10:00:00.000Z"]
-    assert "2 alert" in result["text"]
+    assert result.total == 2
+    assert len(result.alerts) == 2
+    assert result.next_cursor == ["2026-04-20T10:00:00.000Z"]
 
     event = json.loads(buf.getvalue().strip())
-    assert event["tool"] == "search_alerts"
+    assert event["tool"] == "alerts.search_alerts"
     assert event["result_count"] == 2
     assert event["outcome"] == "ok"
 
@@ -155,4 +154,4 @@ async def test_search_alerts_truncated_when_hits_equal_size(httpx_mock: HTTPXMoc
         )
     finally:
         await client.aclose()
-    assert result["structuredContent"]["truncated"] is True
+    assert result.truncated is True
