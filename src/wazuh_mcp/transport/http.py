@@ -41,10 +41,12 @@ class SessionMiddleware(BaseHTTPMiddleware):
         *,
         factory: SessionFactory,
         protect_paths: list[str],
+        resource_metadata_url: str = "",
     ) -> None:
         super().__init__(app)
         self._factory = factory
         self._protect = tuple(protect_paths)
+        self._metadata_url = resource_metadata_url
 
     async def dispatch(
         self,
@@ -71,7 +73,13 @@ class SessionMiddleware(BaseHTTPMiddleware):
             # so strict parsers (browsers, PKCE libs) don't reject the challenge.
             err_code = "insufficient_scope" if e.http_status == 403 else "invalid_token"
             body = {"error": e.public_message}
-            headers = {"WWW-Authenticate": f'Bearer realm="mcp", error="{err_code}"'}
+            challenge = f'Bearer realm="mcp", error="{err_code}"'
+            if self._metadata_url:
+                # RFC 9728 / MCP 2025-06-18: advertise the protected-resource
+                # metadata URL on 401 so clients can discover the auth server
+                # without a preflight.
+                challenge += f', resource_metadata="{self._metadata_url}"'
+            headers = {"WWW-Authenticate": challenge}
             return JSONResponse(body, status_code=e.http_status, headers=headers)
 
         token = set_current_session(session)
@@ -172,4 +180,9 @@ def build_asgi_app(
         lifespan=mcp_streamable.router.lifespan_context,
     )
 
-    return SessionMiddleware(base, factory=factory, protect_paths=["/mcp"])
+    return SessionMiddleware(
+        base,
+        factory=factory,
+        protect_paths=["/mcp"],
+        resource_metadata_url=f"{resource_url.rstrip('/')}/.well-known/oauth-protected-resource",
+    )
