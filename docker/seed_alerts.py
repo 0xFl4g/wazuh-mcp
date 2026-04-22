@@ -37,9 +37,14 @@ def _alert(idx: int, level: int, offset_min: int) -> dict:
 def main() -> int:
     client = httpx.Client(auth=AUTH, verify=False, timeout=30)
     docs = []
-    for i in range(20):
+    # Offsets span the last 24h — 5 min apart for the first 5 (critical window),
+    # then 1h apart for the remaining 15. Integration tests query with
+    # time_range="24h" so drift up to ~1h before test run still keeps all 20
+    # alerts in-range.
+    offsets = [5, 10, 15, 20, 25, *range(60, 60 + 15 * 60, 60)]
+    for i, offset_min in enumerate(offsets):
         lvl = 12 if i % 4 == 0 else 3
-        docs.append(_alert(i, lvl, offset_min=i))
+        docs.append(_alert(i, lvl, offset_min=offset_min))
     lines = []
     for d in docs:
         lines.append(json.dumps({"index": {"_index": INDEX}}))
