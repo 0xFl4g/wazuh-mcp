@@ -8,6 +8,7 @@ from wazuh_mcp.auth.config_factory import ConfigSessionFactory
 from wazuh_mcp.auth.factory import SessionFactory
 from wazuh_mcp.observability.audit import AuditEmitter
 from wazuh_mcp.server import build_app, load_config
+from wazuh_mcp.transport.session_ctx import CURRENT_SESSION, set_current_session
 
 
 @pytest.fixture
@@ -64,7 +65,15 @@ async def test_registered_search_alerts_executes_against_mocked_indexer(
     audit_buf = io.StringIO()
     app = build_app(cfg, audit=AuditEmitter(stream=audit_buf))
     tool = next(t for t in app._tool_manager.list_tools() if t.name == "alerts.search_alerts")
-    result = await tool.fn(time_range="1h")
+
+    # stdio's run_stdio() primes the session contextvar at startup; when
+    # poking tool.fn directly in a test we do the same priming manually.
+    session = await cfg.factory.build({})
+    token = set_current_session(session)
+    try:
+        result = await tool.fn(time_range="1h")
+    finally:
+        CURRENT_SESSION.reset(token)
     assert result.total == 0
     assert result.alerts == []
     assert '"tool": "alerts.search_alerts"' in audit_buf.getvalue()
