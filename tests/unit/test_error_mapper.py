@@ -74,7 +74,17 @@ def test_safe_codes_enumerated():
     from wazuh_mcp.wazuh.errors import SAFE_CODES
 
     assert (
-        frozenset({"auth_expired", "forbidden", "rate_limited", "invalid_query", "upstream_error"})
+        frozenset(
+            {
+                "auth_expired",
+                "forbidden",
+                "rate_limited",
+                "invalid_query",
+                "upstream_error",
+                "not_found",
+                "upstream_timeout",
+            }
+        )
         == SAFE_CODES
     )
 
