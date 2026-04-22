@@ -61,4 +61,15 @@ for _ in $(seq 1 60); do
     sleep 5
 done
 
+echo "[bootstrap] waiting for wazuh-manager Server API..."
+for _ in $(seq 1 40); do
+    if curl -sfku wazuh-wui:MCPmcp12345! \
+        "https://localhost:55000/security/user/authenticate?raw=true" \
+        > /dev/null 2>&1; then
+        echo "[bootstrap] wazuh-manager API ready."
+        break
+    fi
+    sleep 10
+done
+
 echo "[bootstrap] ready. Run: uv run pytest -m integration"

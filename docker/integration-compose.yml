@@ -53,6 +53,36 @@ services:
       retries: 60
       start_period: 90s
 
+  wazuh-manager:
+    image: wazuh/wazuh-manager:4.9.0
+    platform: linux/amd64
+    hostname: wazuh-manager
+    depends_on:
+      generator:
+        condition: service_completed_successfully
+      wazuh-indexer:
+        condition: service_healthy
+    environment:
+      - INDEXER_URL=https://wazuh-indexer:9200
+      - INDEXER_USERNAME=admin
+      - INDEXER_PASSWORD=admin
+      - FILEBEAT_SSL_VERIFICATION_MODE=none
+      - API_USERNAME=wazuh-wui
+      - API_PASSWORD=MCPmcp12345!
+    ports:
+      - "55000:55000"
+    volumes:
+      - ./config/wazuh_indexer_ssl_certs/:/etc/ssl/certs/wazuh/:ro
+      - ./config/wazuh_manager_ossec.conf:/wazuh-config-mount/etc/ossec.conf:ro
+    healthcheck:
+      test:
+        - "CMD-SHELL"
+        - "curl -skfu wazuh-wui:MCPmcp12345! https://localhost:55000/security/user/authenticate?raw=true | grep -q token"
+      interval: 15s
+      timeout: 10s
+      retries: 40
+      start_period: 120s
+
   keycloak:
     image: quay.io/keycloak/keycloak:26.0
     hostname: keycloak

@@ -22,6 +22,10 @@ KEYCLOAK_CLIENT_ID = "wazuh-mcp-client"
 KEYCLOAK_CLIENT_SECRET = "test-client-secret"
 KEYCLOAK_TOKEN_URL = f"{KEYCLOAK_URL}/realms/{KEYCLOAK_REALM}/protocol/openid-connect/token"
 
+WAZUH_MANAGER_URL = os.environ.get("WAZUH_MANAGER_URL", "https://localhost:55000")
+WAZUH_MANAGER_USER = os.environ.get("WAZUH_MANAGER_USER", "wazuh-wui")
+WAZUH_MANAGER_PASSWORD = os.environ.get("WAZUH_MANAGER_PASSWORD", "MCPmcp12345!")
+
 
 @pytest.fixture
 def session() -> Session:
@@ -82,5 +86,24 @@ def keycloak_token():
         )
         resp.raise_for_status()
         return resp.json()["access_token"]
+
+    return _get
+
+
+@pytest.fixture
+def server_api_token():
+    """Mint a raw Wazuh Server API JWT - bypasses the OAuth plumbing for
+    pure Server-API-surface integration tests.
+    """
+
+    def _get() -> str:
+        resp = httpx.post(
+            f"{WAZUH_MANAGER_URL}/security/user/authenticate?raw=true",
+            auth=(WAZUH_MANAGER_USER, WAZUH_MANAGER_PASSWORD),
+            verify=False,
+            timeout=10,
+        )
+        resp.raise_for_status()
+        return resp.text.strip()
 
     return _get
