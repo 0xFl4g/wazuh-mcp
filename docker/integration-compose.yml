@@ -61,7 +61,7 @@ services:
       generator:
         condition: service_completed_successfully
       wazuh-indexer:
-        condition: service_healthy
+        condition: service_started
     environment:
       - INDEXER_URL=https://wazuh-indexer:9200
       - INDEXER_USERNAME=admin
