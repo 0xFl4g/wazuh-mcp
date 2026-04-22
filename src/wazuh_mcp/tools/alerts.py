@@ -24,7 +24,12 @@ from wazuh_mcp.observability.audit import AuditEmitter
 from wazuh_mcp.wazuh.errors import WazuhError
 from wazuh_mcp.wazuh.indexer import IndexerClient
 from wazuh_mcp.wazuh.models import Alert
-from wazuh_mcp.wazuh.query import build_search_alerts_query
+from wazuh_mcp.wazuh.query import (
+    build_alerts_by_agent_query,
+    build_alerts_by_mitre_query,
+    build_get_alert_query,
+    build_search_alerts_query,
+)
 
 
 class SearchAlertsArgs(BaseModel):
@@ -138,6 +143,215 @@ async def search_alerts(
         duration_ms=int((time.monotonic() - started) * 1000),
     )
 
+    return SearchAlertsResult(
+        alerts=alerts,
+        total=total,
+        next_cursor=next_cursor,
+        truncated=truncated,
+    )
+
+
+class GetAlertArgs(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    alert_id: Annotated[str, Field(min_length=1, max_length=128)]
+
+
+class GetAlertResult(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    alert: Alert
+
+
+async def get_alert(
+    *,
+    args: GetAlertArgs,
+    session: Session,
+    indexer: IndexerClient,
+    audit: AuditEmitter,
+) -> GetAlertResult:
+    """Tool name: alerts.get_alert."""
+    started = time.monotonic()
+    arg_dict = args.model_dump()
+
+    try:
+        query = build_get_alert_query(args.alert_id)
+        body = await indexer.search(index="wazuh-alerts-*", query=query)
+    except WazuhError as e:
+        audit.emit(
+            session=session,
+            tool="alerts.get_alert",
+            args=arg_dict,
+            outcome="error",
+            result_count=0,
+            duration_ms=int((time.monotonic() - started) * 1000),
+            error_code=e.code,
+        )
+        raise
+    except ValueError:
+        audit.emit(
+            session=session,
+            tool="alerts.get_alert",
+            args=arg_dict,
+            outcome="error",
+            result_count=0,
+            duration_ms=int((time.monotonic() - started) * 1000),
+            error_code="invalid_query",
+        )
+        raise
+
+    hits = body.get("hits", {}).get("hits", [])
+    if not hits:
+        audit.emit(
+            session=session,
+            tool="alerts.get_alert",
+            args=arg_dict,
+            outcome="error",
+            result_count=0,
+            duration_ms=int((time.monotonic() - started) * 1000),
+            error_code="not_found",
+        )
+        raise WazuhError("not_found", "alert not found", 404)
+
+    alert = Alert.from_hit(hits[0])
+    audit.emit(
+        session=session,
+        tool="alerts.get_alert",
+        args=arg_dict,
+        outcome="ok",
+        result_count=1,
+        duration_ms=int((time.monotonic() - started) * 1000),
+    )
+    return GetAlertResult(alert=alert)
+
+
+class AlertsByAgentArgs(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    agent_id: Annotated[str, Field(min_length=1, max_length=16)]
+    time_range: str = "24h"
+    size: Annotated[int, Field(ge=1, le=100)] = 25
+    cursor: Annotated[list[Any] | None, Field()] = None
+
+
+async def alerts_by_agent(
+    *,
+    args: AlertsByAgentArgs,
+    session: Session,
+    indexer: IndexerClient,
+    audit: AuditEmitter,
+) -> SearchAlertsResult:
+    """Tool name: alerts.alerts_by_agent."""
+    return await _filtered_alerts_search(
+        tool_name="alerts.alerts_by_agent",
+        build_query=lambda: build_alerts_by_agent_query(
+            agent_id=args.agent_id,
+            time_range=args.time_range,
+            size=args.size,
+            cursor=args.cursor,
+        ),
+        args_dict=args.model_dump(exclude_none=True),
+        wanted_size=args.size,
+        session=session,
+        indexer=indexer,
+        audit=audit,
+    )
+
+
+class AlertsByMitreArgs(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    technique_id: Annotated[str, Field(min_length=4, max_length=16)]
+    time_range: str = "24h"
+    size: Annotated[int, Field(ge=1, le=100)] = 25
+    cursor: Annotated[list[Any] | None, Field()] = None
+
+
+async def alerts_by_mitre(
+    *,
+    args: AlertsByMitreArgs,
+    session: Session,
+    indexer: IndexerClient,
+    audit: AuditEmitter,
+) -> SearchAlertsResult:
+    """Tool name: alerts.alerts_by_mitre."""
+    return await _filtered_alerts_search(
+        tool_name="alerts.alerts_by_mitre",
+        build_query=lambda: build_alerts_by_mitre_query(
+            technique_id=args.technique_id,
+            time_range=args.time_range,
+            size=args.size,
+            cursor=args.cursor,
+        ),
+        args_dict=args.model_dump(exclude_none=True),
+        wanted_size=args.size,
+        session=session,
+        indexer=indexer,
+        audit=audit,
+    )
+
+
+async def _filtered_alerts_search(
+    *,
+    tool_name: str,
+    build_query,
+    args_dict: dict[str, Any],
+    wanted_size: int,
+    session: Session,
+    indexer: IndexerClient,
+    audit: AuditEmitter,
+) -> SearchAlertsResult:
+    """Shared path for alerts-index filtered searches — same auditing and
+    error-mapping contract as search_alerts().
+    """
+    started = time.monotonic()
+    try:
+        query = build_query()
+        body = await indexer.search(index="wazuh-alerts-*", query=query)
+    except WazuhError as e:
+        audit.emit(
+            session=session,
+            tool=tool_name,
+            args=args_dict,
+            outcome="error",
+            result_count=0,
+            duration_ms=int((time.monotonic() - started) * 1000),
+            error_code=e.code,
+        )
+        raise
+    except ValueError:
+        audit.emit(
+            session=session,
+            tool=tool_name,
+            args=args_dict,
+            outcome="error",
+            result_count=0,
+            duration_ms=int((time.monotonic() - started) * 1000),
+            error_code="invalid_query",
+        )
+        raise
+
+    raw_hits = body.get("hits", {}).get("hits", [])
+    total_block = body.get("hits", {}).get("total", {})
+    total = (
+        total_block.get("value", 0)
+        if isinstance(total_block, dict)
+        else int(total_block)
+    )
+    alerts = [Alert.from_hit(h) for h in raw_hits]
+    next_cursor: list[Any] | None = None
+    if raw_hits and "sort" in raw_hits[-1]:
+        next_cursor = raw_hits[-1]["sort"]
+    truncated = len(alerts) == wanted_size
+
+    audit.emit(
+        session=session,
+        tool=tool_name,
+        args=args_dict,
+        outcome="ok",
+        result_count=len(alerts),
+        duration_ms=int((time.monotonic() - started) * 1000),
+    )
     return SearchAlertsResult(
         alerts=alerts,
         total=total,
