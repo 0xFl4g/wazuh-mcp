@@ -17,7 +17,12 @@ DISCO = f"{ISS}/.well-known/openid-configuration"
 JWKS = f"{ISS}/jwks"
 
 
-def _tenant(tid: str, issuer: str | None = ISS) -> TenantConfig:
+def _tenant(
+    tid: str,
+    issuer: str | None = ISS,
+    *,
+    wazuh_user_claim: str = "wazuh_user",
+) -> TenantConfig:
     return TenantConfig(
         tenant_id=tid,
         indexer_url="https://x:9200",
@@ -26,6 +31,7 @@ def _tenant(tid: str, issuer: str | None = ISS) -> TenantConfig:
         default_rbac_role="soc_analyst",
         oauth_issuer=issuer,
         oauth_audience=AUD if issuer else None,
+        wazuh_user_claim=wazuh_user_claim,
     )
 
 
@@ -262,3 +268,93 @@ def test_empty_algorithms_rejected_at_construction(index):
             rbac_claims=["wazuh_mcp_role"],
             issuer_index=index,
         )
+
+
+async def test_oauth_factory_extracts_wazuh_user_default_claim(seed_oidc, jwt_factory):
+    index = IssuerIndex([_tenant("acme", wazuh_user_claim="wazuh_user")])
+    factory = OAuthSessionFactory(
+        issuer=ISS,
+        audience=AUD,
+        algorithms=["RS256"],
+        rbac_claims=["wazuh_mcp_role"],
+        issuer_index=index,
+    )
+    try:
+        token = jwt_factory.make(
+            sub="abc",
+            extra={
+                "tenant_id": "acme",
+                "wazuh_mcp_role": "soc_analyst",
+                "wazuh_user": "alice",
+            },
+        )
+        session = await factory.build({"headers": {"Authorization": f"Bearer {token}"}})
+    finally:
+        await factory.aclose()
+    assert session.wazuh_user == "alice"
+
+
+async def test_oauth_factory_extracts_wazuh_user_custom_claim(seed_oidc, jwt_factory):
+    index = IssuerIndex([_tenant("acme", wazuh_user_claim="uid")])
+    factory = OAuthSessionFactory(
+        issuer=ISS,
+        audience=AUD,
+        algorithms=["RS256"],
+        rbac_claims=["wazuh_mcp_role"],
+        issuer_index=index,
+    )
+    try:
+        token = jwt_factory.make(
+            sub="abc",
+            extra={
+                "tenant_id": "acme",
+                "wazuh_mcp_role": "soc_analyst",
+                "uid": "bob",
+            },
+        )
+        session = await factory.build({"headers": {"Authorization": f"Bearer {token}"}})
+    finally:
+        await factory.aclose()
+    assert session.wazuh_user == "bob"
+
+
+async def test_oauth_factory_wazuh_user_absent_yields_none(seed_oidc, jwt_factory, index):
+    factory = OAuthSessionFactory(
+        issuer=ISS,
+        audience=AUD,
+        algorithms=["RS256"],
+        rbac_claims=["wazuh_mcp_role"],
+        issuer_index=index,
+    )
+    try:
+        token = jwt_factory.make(
+            sub="abc",
+            extra={"tenant_id": "acme", "wazuh_mcp_role": "soc_analyst"},
+        )
+        session = await factory.build({"headers": {"Authorization": f"Bearer {token}"}})
+    finally:
+        await factory.aclose()
+    assert session.wazuh_user is None
+
+
+async def test_oauth_factory_wazuh_user_list_takes_first(seed_oidc, jwt_factory, index):
+    factory = OAuthSessionFactory(
+        issuer=ISS,
+        audience=AUD,
+        algorithms=["RS256"],
+        rbac_claims=["wazuh_mcp_role"],
+        issuer_index=index,
+    )
+    try:
+        token = jwt_factory.make(
+            sub="abc",
+            extra={
+                "tenant_id": "acme",
+                "wazuh_mcp_role": "soc_analyst",
+                "wazuh_user": ["alice", "backup"],
+            },
+        )
+        session = await factory.build({"headers": {"Authorization": f"Bearer {token}"}})
+    finally:
+        await factory.aclose()
+    assert session.wazuh_user == "alice"

@@ -136,12 +136,37 @@ class OAuthSessionFactory(SessionFactory):
             else:
                 raise MissingClaim("rbac_role", detail="no rbac claim found")
 
+        wazuh_user = self._pick_wazuh_user(claims, iss_tenant_cfg)
+
         return Session(
             user_id=str(sub),
             tenant_id=tenant_id,
             rbac_role=rbac,
             auth_method="oauth",
+            wazuh_user=wazuh_user,
         )
+
+    def _pick_wazuh_user(
+        self,
+        claims: dict[str, Any],
+        iss_tenant_cfg: Any,
+    ) -> str | None:
+        """Extract wazuh_user from claims using the tenant's configured claim name.
+
+        Tenant config defaults to `wazuh_user`. When the claim is absent or
+        empty, returns None — the Server API request will run as the tenant's
+        service account.
+        """
+        if iss_tenant_cfg is None:
+            return None
+        claim_name = getattr(iss_tenant_cfg, "wazuh_user_claim", "wazuh_user")
+        val = claims.get(claim_name)
+        if val is None:
+            return None
+        if isinstance(val, list):
+            return str(val[0]) if val else None
+        s = str(val).strip()
+        return s or None
 
     async def aclose(self) -> None:
         await self._jwks.aclose()
