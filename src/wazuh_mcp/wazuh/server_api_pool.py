@@ -46,7 +46,7 @@ class ServerApiClientPool:
             self._clients[tenant_id] = client
             return client
 
-    async def aclose(self) -> None:
+    async def aclose_all(self) -> None:
         async with self._lock:
             if self._closed:
                 return

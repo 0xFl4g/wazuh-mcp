@@ -43,7 +43,7 @@ async def test_acquire_is_lazy_and_idempotent():
         c1 = await pool.acquire("a")
         c2 = await pool.acquire("a")
     finally:
-        await pool.aclose()
+        await pool.aclose_all()
 
     assert c1 is c2
     assert secrets.calls == [
@@ -58,7 +58,7 @@ async def test_acquire_raises_after_close():
         registry=_FakeRegistry({"a": _tenant("a")}),
         secrets=_FakeSecrets(),
     )
-    await pool.aclose()
+    await pool.aclose_all()
     with pytest.raises(RuntimeError, match="closed"):
         await pool.acquire("a")
 
@@ -69,8 +69,8 @@ async def test_aclose_is_idempotent():
         registry=_FakeRegistry({"a": _tenant("a")}),
         secrets=_FakeSecrets(),
     )
-    await pool.aclose()
-    await pool.aclose()  # must not raise
+    await pool.aclose_all()
+    await pool.aclose_all()  # must not raise
 
 
 @pytest.mark.asyncio
