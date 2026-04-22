@@ -2,10 +2,52 @@
 
 Model Context Protocol server for Wazuh SIEM/XDR.
 
-**Status:** M1 (walking skeleton). Single tenant, single tool (`search_alerts`),
-stdio transport. See `docs/superpowers/specs/2026-04-20-wazuh-mcp-design.md`
-for the full v1 design and `docs/superpowers/plans/` for the milestone
-roadmap.
+**Status:** M3 in progress. Multi-tenant, OAuth 2.1 + API-key auth, stdio + Streamable HTTP transports. Full tool surface (17 tools across 6 domains, 3 resources, 3 prompts). See `docs/superpowers/specs/` for design specs per milestone.
+
+## Tools (17)
+
+### `alerts.*`
+- `alerts.search_alerts` — Search alerts by time range + filters
+- `alerts.get_alert` — Fetch a single alert by id
+- `alerts.alerts_by_agent` — Filter alerts by agent
+- `alerts.alerts_by_mitre` — Filter alerts by MITRE technique
+
+### `agents.*`
+- `agents.list_agents`
+- `agents.get_agent`
+- `agents.agent_processes`
+- `agents.agent_packages`
+- `agents.agent_ports`
+
+### `vulnerabilities.*`
+- `vulnerabilities.list_vulnerabilities_by_agent`
+- `vulnerabilities.search_vulnerabilities`
+
+### `mitre.*`
+- `mitre.get_mitre_technique`
+- `mitre.search_mitre`
+
+### `hunt.*`
+- `hunt.hunt_query` — constrained-grammar hunt over alerts
+- `hunt.pivot_by_ioc` — hash/ip/user/domain preset
+
+### `fim.*`
+- `fim.fim_history_for_path`
+- `fim.fim_changes_by_agent`
+
+## Resources (3)
+- `wazuh://rules/{id}` (5 min TTL hint)
+- `wazuh://mitre/technique/{id}` (24 h TTL hint)
+- `wazuh://agents/{id}/config` (5 min TTL hint)
+
+## Prompts (3)
+- `/wazuh:investigate-alert {alert_id}` — pre-loaded alert + agent + neighbors context
+- `/wazuh:triage-last-hour` — pre-loaded recent high-severity alerts
+- `/wazuh:agent-posture {agent_id}` — pre-loaded agent + alerts + vulns context
+
+**Requires Wazuh ≥ 4.8** for `vulnerabilities.*` (state lives in the indexer as of 4.8).
+
+See `docs/deploy/m3-tools.md` for the per-tool argument reference.
 
 ## Requirements
 

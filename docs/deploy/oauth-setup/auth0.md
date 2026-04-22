@@ -40,3 +40,23 @@ Auth0's well-known endpoint is `${issuer}.well-known/openid-configuration` (Auth
 
 - Auth0 namespaces custom claims unless you use an allowlisted claim name. If the claim doesn't arrive, verify the Action ran (Auth0 → Actions → Logs) and the claim isn't being stripped by a namespace rule.
 - Default access-token lifetime is 24h. Shorten for sensitive deployments.
+
+## Emitting the `wazuh_user` claim
+
+For per-user attribution in Wazuh's audit log (`run_as`), the access token must carry a claim whose value is the Wazuh username the bearer maps to. The claim name is configured in `tenants.yaml` via `wazuh_user_claim` (default `wazuh_user`).
+
+1. Auth0 → User Management → Users → <user> → Metadata: set `app_metadata.wazuh_user = "<wazuh-username>"`.
+2. Auth0 → Actions → Library → build a post-login Action and add it to the Login flow:
+   ```js
+   exports.onExecutePostLogin = async (event, api) => {
+     if (event.user.app_metadata?.wazuh_user) {
+       api.accessToken.setCustomClaim(
+         "wazuh_user",
+         event.user.app_metadata.wazuh_user,
+       );
+     }
+   };
+   ```
+3. If Auth0 rejects the unnamespaced claim, switch to a namespaced name (e.g. `https://mcp.example.com/wazuh_user`) and set `wazuh_user_claim` in `tenants.yaml` to match.
+
+Absent claim → request runs as the tenant's Server API service account.

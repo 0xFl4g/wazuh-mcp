@@ -91,6 +91,15 @@ Before deploying M2 to production:
 - [ ] `WAZUH_MCP_CONFIG_DIR` points at a path only the service user can read.
 - [ ] Structured logs are shipped to a SIEM (ideally back to the same Wazuh the MCP server talks to).
 
+## M3 additions
+
+- **Server API client JWT hygiene.** Tokens are signature-verified by Wazuh at use; the client only decodes `exp` to schedule refresh. Credentials never appear in repr/logs/errors. Mint stampedes prevented via `asyncio.Lock`.
+- **`run_as` policy.** Only sourced from the OAuth bearer's configured claim. No tool argument, no config path, no derivation from `preferred_username`. Absent claim → service account (fail-closed).
+- **`hunt_query` grammar.** Field + op allowlists enforced at the Pydantic layer. DSL construction only emits `term`, `terms`, `range`, `exists`, `prefix` — never `script`, `runtime_mappings`, `script_score`, `painless`, or nested `bool`. Clause count capped at 20; `in` list capped at 100; `prefix` ≥ 3 chars. Hypothesis property tests verify no bypass.
+- **Resources.** New MCP surface. `resources/list` returns empty; `resources/templates/list` publishes three URI templates. All reads scoped to the session's tenant — URIs have no tenant segment, so no cross-tenant URI confusion.
+- **Prompts.** Privilege-equivalent to tool calls under the session's identity. Handlers run nested tool calls; all inherit the session's `tenant_id` + `wazuh_user`. No elevation path.
+- **New error codes.** `not_found` (agent/rule/technique missing — leaks only the ID the caller supplied) and `upstream_timeout` (504, leaks nothing). Both added to `SAFE_CODES`.
+
 ## References
 
 - M1 design spec: `docs/superpowers/specs/2026-04-20-wazuh-mcp-design.md` §6.

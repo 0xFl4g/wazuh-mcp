@@ -31,3 +31,17 @@ Okta's well-known endpoint lives at `${issuer}/.well-known/openid-configuration`
 
 - The **Default** authorization server's issuer is `https://<org>.okta.com`, but custom audiences + claims require a **custom** authorization server. Use a custom one for real deployments.
 - Okta's default access-token lifetime is 1 hour. Consider shortening for sensitive environments.
+
+## Emitting the `wazuh_user` claim
+
+For per-user attribution in Wazuh's audit log (`run_as`), the access token must carry a claim whose value is the Wazuh username the bearer maps to. The claim name is configured in `tenants.yaml` via `wazuh_user_claim` (default `wazuh_user`).
+
+1. Directory → Profile Editor → the Okta user profile → Add Attribute: string `wazuh_user` (custom attribute).
+2. Populate the per-user value (Directory → People → <user> → Profile) or map it from your upstream directory.
+3. Security → API → Authorization Servers → <server> → Claims → Add Claim:
+   - Name: `wazuh_user`
+   - Include in token type: **Access Token**
+   - Value type: Expression → `user.wazuh_user`
+   - Include in: **Any scope** (or scope-filtered if you prefer)
+
+Absent claim → request runs as the tenant's Server API service account.

@@ -48,3 +48,17 @@ wazuh-mcp auto-discovers the JWKS URL from the configuration endpoint.
 ## Token rotation
 
 Default Keycloak access token lifespan is 5 minutes. Adjust under Realm → Tokens as needed. Shorter lifespan = tighter revocation story; wazuh-mcp has no introspection in M2, so short tokens are the revocation mechanism.
+
+## Emitting the `wazuh_user` claim
+
+For per-user attribution in Wazuh's audit log (`run_as`), the access token must carry a claim whose value is the Wazuh username the bearer maps to. The claim name is configured in `tenants.yaml` via `wazuh_user_claim` (default `wazuh_user`).
+
+1. Realm → Users → <user> → Attributes: add `wazuh_user=<wazuh-username>`.
+2. Realm → Clients → `wazuh-mcp-client` → Client scopes → `wazuh-mcp-client-dedicated` → Add mapper → By configuration → **User Attribute**.
+   - Name: `wazuh_user-mapper`
+   - User Attribute: `wazuh_user`
+   - Token Claim Name: `wazuh_user`
+   - Add to access token: **On**
+   - Multivalued: **Off**
+
+Absent claim → request runs as the tenant's Server API service account.

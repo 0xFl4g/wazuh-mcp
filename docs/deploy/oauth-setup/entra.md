@@ -42,3 +42,18 @@ Entra exposes `${issuer}/.well-known/openid-configuration`; auto-discovered.
 
 - Entra claim customization is more involved than Keycloak/Okta; simpler deployments can route via `iss` alone (the IssuerIndex path), skipping `tenant_id` claim entirely.
 - Default access-token lifetime is 1 hour (configurable via Conditional Access policies).
+
+## Emitting the `wazuh_user` claim
+
+For per-user attribution in Wazuh's audit log (`run_as`), the access token must carry a claim whose value is the Wazuh username the bearer maps to. The claim name is configured in `tenants.yaml` via `wazuh_user_claim` (default `wazuh_user`).
+
+Entra source this from a directory-schema extension attribute. Two equivalent paths:
+
+1. **Manifest**: app registration → Manifest → append to `optionalClaims.accessToken`:
+   ```json
+   { "name": "extension_wazuh_user", "source": "user", "essential": false }
+   ```
+   Then populate `extension_<appid>_wazuh_user` on each user (Graph API). Configure `wazuh_user_claim: extension_wazuh_user` in `tenants.yaml`.
+2. **UI**: app registration → Token configuration → Add optional claim → **Access** → pick the extension attribute. If prompted, tick "Turn on the Microsoft Graph email permission".
+
+Absent claim → request runs as the tenant's Server API service account.
