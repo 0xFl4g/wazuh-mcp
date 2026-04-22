@@ -35,18 +35,14 @@ from wazuh_mcp.wazuh.query import (
 class SearchAlertsArgs(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    time_range: Annotated[
-        str, Field(description="Relative lookback, e.g. '1h', '24h', '7d'")
-    ] = "1h"
-    min_level: Annotated[
-        int | None, Field(ge=0, le=15, description="Minimum rule.level")
-    ] = None
-    agent_id: Annotated[
-        str | None, Field(description="Filter to a single agent.id")
-    ] = None
-    size: Annotated[
-        int, Field(ge=1, le=100, description="Max alerts to return (hard cap 100)")
-    ] = 25
+    time_range: Annotated[str, Field(description="Relative lookback, e.g. '1h', '24h', '7d'")] = (
+        "1h"
+    )
+    min_level: Annotated[int | None, Field(ge=0, le=15, description="Minimum rule.level")] = None
+    agent_id: Annotated[str | None, Field(description="Filter to a single agent.id")] = None
+    size: Annotated[int, Field(ge=1, le=100, description="Max alerts to return (hard cap 100)")] = (
+        25
+    )
     cursor: Annotated[
         list[Any] | None, Field(description="Opaque search_after cursor from prior call")
     ] = None
@@ -112,11 +108,7 @@ async def search_alerts(
         raw_hits = body.get("hits", {}).get("hits", [])
         hits_block = body.get("hits", {})
         total_block = hits_block.get("total", {})
-        total = (
-            total_block.get("value", 0)
-            if isinstance(total_block, dict)
-            else int(total_block)
-        )
+        total = total_block.get("value", 0) if isinstance(total_block, dict) else int(total_block)
         alerts = [Alert.from_hit(h) for h in raw_hits]
         next_cursor: list[Any] | None = None
         if raw_hits and "sort" in raw_hits[-1]:
@@ -333,11 +325,7 @@ async def _filtered_alerts_search(
 
     raw_hits = body.get("hits", {}).get("hits", [])
     total_block = body.get("hits", {}).get("total", {})
-    total = (
-        total_block.get("value", 0)
-        if isinstance(total_block, dict)
-        else int(total_block)
-    )
+    total = total_block.get("value", 0) if isinstance(total_block, dict) else int(total_block)
     alerts = [Alert.from_hit(h) for h in raw_hits]
     next_cursor: list[Any] | None = None
     if raw_hits and "sort" in raw_hits[-1]:

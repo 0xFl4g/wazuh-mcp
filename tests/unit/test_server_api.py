@@ -88,7 +88,9 @@ async def test_reuse_valid_token(httpx_mock):
     assert b["data"]["affected_items"][0]["id"] == "002"
 
     # Only one mint for two calls
-    mint_calls = [r for r in httpx_mock.get_requests() if r.url.path == "/security/user/authenticate"]
+    mint_calls = [
+        r for r in httpx_mock.get_requests() if r.url.path == "/security/user/authenticate"
+    ]
     assert len(mint_calls) == 1
 
 

@@ -90,9 +90,7 @@ async def test_read_rule_happy(session, audit, server_api, httpx_mock):
         method="GET",
         json={"data": {"affected_items": [{"id": 5700, "description": "ssh brute force"}]}},
     )
-    result = await read_rule(
-        rule_id="5700", session=session, server_api=server_api, audit=audit
-    )
+    result = await read_rule(rule_id="5700", session=session, server_api=server_api, audit=audit)
     assert result["_meta"]["ttl_seconds"] == 300
     body = json.loads(result["contents"][0]["text"])
     assert body["id"] == 5700
@@ -101,9 +99,7 @@ async def test_read_rule_happy(session, audit, server_api, httpx_mock):
 @pytest.mark.asyncio
 async def test_read_rule_rejects_bad_id(session, audit, server_api):
     with pytest.raises(ValueError):
-        await read_rule(
-            rule_id="abc", session=session, server_api=server_api, audit=audit
-        )
+        await read_rule(rule_id="abc", session=session, server_api=server_api, audit=audit)
 
 
 @pytest.mark.asyncio
@@ -114,9 +110,7 @@ async def test_read_rule_not_found(session, audit, server_api, httpx_mock):
         json={"data": {"affected_items": []}},
     )
     with pytest.raises(WazuhError) as exc_info:
-        await read_rule(
-            rule_id="9999", session=session, server_api=server_api, audit=audit
-        )
+        await read_rule(rule_id="9999", session=session, server_api=server_api, audit=audit)
     assert exc_info.value.code == "not_found"
 
 
@@ -149,6 +143,4 @@ async def test_read_mitre_technique_happy(session, audit, server_api, httpx_mock
 @pytest.mark.asyncio
 async def test_read_agent_config_rejects_bad_id(session, audit, server_api):
     with pytest.raises(ValueError):
-        await read_agent_config(
-            agent_id="xx", session=session, server_api=server_api, audit=audit
-        )
+        await read_agent_config(agent_id="xx", session=session, server_api=server_api, audit=audit)

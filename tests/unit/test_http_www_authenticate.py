@@ -41,8 +41,7 @@ def test_www_authenticate_includes_resource_metadata_on_401():
     assert 'realm="mcp"' in challenge
     assert 'error="invalid_token"' in challenge
     assert (
-        'resource_metadata="https://mcp.example/.well-known/oauth-protected-resource"'
-        in challenge
+        'resource_metadata="https://mcp.example/.well-known/oauth-protected-resource"' in challenge
     )
 
 

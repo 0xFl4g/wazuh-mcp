@@ -210,7 +210,7 @@ def build_vulnerabilities_by_agent_query(
         sev = min_severity.capitalize()
         if sev not in _SEVERITIES:
             raise ValueError(f"invalid severity: {min_severity!r}")
-        allowed = _SEVERITIES[_SEVERITIES.index(sev):]
+        allowed = _SEVERITIES[_SEVERITIES.index(sev) :]
         must.append({"terms": {"vulnerability.severity": allowed}})
     query: dict[str, Any] = {
         "query": {"bool": {"must": must}},
@@ -242,7 +242,7 @@ def build_search_vulnerabilities_query(
         sev = min_severity.capitalize()
         if sev not in _SEVERITIES:
             raise ValueError(f"invalid severity: {min_severity!r}")
-        allowed = _SEVERITIES[_SEVERITIES.index(sev):]
+        allowed = _SEVERITIES[_SEVERITIES.index(sev) :]
         must.append({"terms": {"vulnerability.severity": allowed}})
     query: dict[str, Any] = {
         "query": {"bool": {"must": must}},

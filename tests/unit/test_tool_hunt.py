@@ -133,9 +133,7 @@ def test_build_hunt_dsl_flattens_ne_to_must_not():
 
 
 @pytest.mark.asyncio
-async def test_pivot_by_ioc_hash_uses_sha256_field(
-    session, audit, indexer, httpx_mock
-):
+async def test_pivot_by_ioc_hash_uses_sha256_field(session, audit, indexer, httpx_mock):
     httpx_mock.add_response(
         url="https://indexer.example/wazuh-alerts-*/_search",
         method="POST",

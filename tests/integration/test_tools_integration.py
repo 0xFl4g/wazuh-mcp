@@ -29,9 +29,7 @@ async def test_alerts_tools_all_respond(mcp_http_server, keycloak_token):
             ClientSession(read, write) as session,
         ):
             await session.initialize()
-            r = await session.call_tool(
-                "alerts.search_alerts", {"time_range": "24h", "size": 3}
-            )
+            r = await session.call_tool("alerts.search_alerts", {"time_range": "24h", "size": 3})
             assert not r.isError
             r = await session.call_tool(
                 "alerts.alerts_by_agent",
@@ -100,9 +98,7 @@ async def test_hunt_query_rejects_off_allowlist_field(mcp_http_server, keycloak_
                 "hunt.hunt_query",
                 {
                     "time_range": "1h",
-                    "must": [
-                        {"field": "vulnerability.id", "op": "eq", "value": "CVE-X"}
-                    ],
+                    "must": [{"field": "vulnerability.id", "op": "eq", "value": "CVE-X"}],
                 },
             )
             assert r.isError, "expected ValidationError surfaced to the client"

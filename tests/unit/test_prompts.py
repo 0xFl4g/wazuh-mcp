@@ -152,9 +152,7 @@ async def test_investigate_alert_not_found_returns_message_not_raises(
 
 
 @pytest.mark.asyncio
-async def test_triage_last_hour_returns_pre_loaded_results(
-    session, audit, indexer, httpx_mock
-):
+async def test_triage_last_hour_returns_pre_loaded_results(session, audit, indexer, httpx_mock):
     httpx_mock.add_response(
         url="https://indexer.example/wazuh-alerts-*/_search",
         method="POST",

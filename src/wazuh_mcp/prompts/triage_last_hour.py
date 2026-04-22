@@ -33,9 +33,7 @@ async def handle(
             audit=audit,
         )
     except WazuhError as e:
-        return make_user_message(
-            f"Triage fetch failed ({e.code}). Retry or check upstream."
-        )
+        return make_user_message(f"Triage fetch failed ({e.code}). Retry or check upstream.")
 
     alerts_json = json.dumps([a.model_dump() for a in result.alerts], indent=2)
     text = (

@@ -97,9 +97,7 @@ class HuntClause(BaseModel):
             if not isinstance(self.value, list):
                 raise ValueError("op='in' requires a list value")
             if len(self.value) == 0 or len(self.value) > _MAX_IN_LENGTH:
-                raise ValueError(
-                    f"'in' value must have 1..{_MAX_IN_LENGTH} items"
-                )
+                raise ValueError(f"'in' value must have 1..{_MAX_IN_LENGTH} items")
         elif self.op == "exists":
             if self.value is not True:
                 raise ValueError("op='exists' requires value=true")
@@ -169,9 +167,7 @@ def _render_clause(c: HuntClause) -> dict[str, Any]:
 
 
 def _build_hunt_dsl(args: HuntQueryArgs) -> dict[str, Any]:
-    must: list[dict[str, Any]] = [
-        {"range": {"@timestamp": {"gte": f"now-{args.time_range}"}}}
-    ]
+    must: list[dict[str, Any]] = [{"range": {"@timestamp": {"gte": f"now-{args.time_range}"}}}]
     must_not: list[dict[str, Any]] = []
 
     for c in args.must:
@@ -229,11 +225,7 @@ async def hunt_query(
 
     raw_hits = body.get("hits", {}).get("hits", [])
     total_block = body.get("hits", {}).get("total", {})
-    total = (
-        total_block.get("value", 0)
-        if isinstance(total_block, dict)
-        else int(total_block)
-    )
+    total = total_block.get("value", 0) if isinstance(total_block, dict) else int(total_block)
     alerts = [Alert.from_hit(h) for h in raw_hits]
     next_cursor: list[Any] | None = None
     if raw_hits and "sort" in raw_hits[-1]:
@@ -257,6 +249,7 @@ async def hunt_query(
 
 
 # ---- pivot_by_ioc ----
+
 
 class PivotByIocArgs(BaseModel):
     model_config = ConfigDict(extra="forbid")

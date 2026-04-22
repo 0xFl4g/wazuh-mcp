@@ -52,9 +52,7 @@ TEMPLATES: tuple[ResourceTemplate, ...] = (
     ResourceTemplate(
         uri_template="wazuh://agents/{id}/config",
         name="Agent configuration",
-        description=(
-            "Current agent configuration snapshot from the Server API."
-        ),
+        description=("Current agent configuration snapshot from the Server API."),
         mime_type="application/json",
         ttl_seconds=300,
     ),

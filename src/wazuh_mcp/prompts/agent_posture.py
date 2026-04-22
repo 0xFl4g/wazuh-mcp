@@ -73,11 +73,8 @@ async def handle(
             indexer=indexer,
             audit=audit,
         )
-        vuln_block = (
-            f"total={vulns.total}, showing={len(vulns.vulnerabilities)}:\n"
-            + json.dumps(
-                [v.model_dump() for v in vulns.vulnerabilities], indent=2
-            )
+        vuln_block = f"total={vulns.total}, showing={len(vulns.vulnerabilities)}:\n" + json.dumps(
+            [v.model_dump() for v in vulns.vulnerabilities], indent=2
         )
     except WazuhError:
         pass

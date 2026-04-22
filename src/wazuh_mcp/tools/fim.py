@@ -132,11 +132,7 @@ async def _fim_search(
 
     raw_hits = body.get("hits", {}).get("hits", [])
     total_block = body.get("hits", {}).get("total", {})
-    total = (
-        total_block.get("value", 0)
-        if isinstance(total_block, dict)
-        else int(total_block)
-    )
+    total = total_block.get("value", 0) if isinstance(total_block, dict) else int(total_block)
     events = [FimEvent.from_hit(h) for h in raw_hits]
     next_cursor: list[Any] | None = None
     if raw_hits and "sort" in raw_hits[-1]:

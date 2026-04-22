@@ -82,9 +82,7 @@ async def handle(
                 indexer=indexer,
                 audit=audit,
             )
-            neighbors_block = json.dumps(
-                [a.model_dump() for a in neighbors.alerts], indent=2
-            )
+            neighbors_block = json.dumps([a.model_dump() for a in neighbors.alerts], indent=2)
         except WazuhError:
             pass
 

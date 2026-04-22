@@ -214,9 +214,7 @@ async def test_mcp_tools_list_includes_search_alerts(mcp_http_server, keycloak_t
 
 
 @pytest.mark.integration
-async def test_mcp_tools_call_search_alerts_returns_seeded_data(
-    mcp_http_server, keycloak_token
-):
+async def test_mcp_tools_call_search_alerts_returns_seeded_data(mcp_http_server, keycloak_token):
     import httpx as _httpx
     from mcp import ClientSession
     from mcp.client.streamable_http import streamable_http_client
@@ -238,14 +236,10 @@ async def test_mcp_tools_call_search_alerts_returns_seeded_data(
         ):
             await session.initialize()
             try:
-                result = await session.call_tool(
-                    tool_name, {"time_range": "24h", "size": 5}
-                )
+                result = await session.call_tool(tool_name, {"time_range": "24h", "size": 5})
             except Exception:
                 # fall back to the pre-rename name during the transitional window
-                result = await session.call_tool(
-                    "search_alerts", {"time_range": "24h", "size": 5}
-                )
+                result = await session.call_tool("search_alerts", {"time_range": "24h", "size": 5})
     finally:
         await http_client.aclose()
 

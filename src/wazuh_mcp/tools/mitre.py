@@ -127,9 +127,7 @@ async def search_mitre(
     params = {"q": ",".join(qclauses), "limit": args.size}
 
     try:
-        body = await server_api.get(
-            "/mitre/techniques", params=params, run_as=session.wazuh_user
-        )
+        body = await server_api.get("/mitre/techniques", params=params, run_as=session.wazuh_user)
     except WazuhError as e:
         audit.emit(
             session=session,
