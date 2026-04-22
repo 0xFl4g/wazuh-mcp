@@ -14,17 +14,33 @@ class _AlwaysDenyFactory(SessionFactory):
 
 
 class _DummyMcpApp:
-    """Minimal stand-in for FastMCP.streamable_http_app()."""
+    """Minimal stand-in that mirrors the real FastMCP surface:
+    - Internal /mcp route (what real FastMCP exposes)
+    - router.lifespan_context (task group needs startup in production)
+    """
 
     def streamable_http_app(self):
+        from contextlib import asynccontextmanager
+
         from starlette.applications import Starlette
         from starlette.responses import JSONResponse
         from starlette.routing import Route
 
-        async def _ok(request):
-            return JSONResponse({"ok": True})
+        started = {"flag": False}
 
-        return Starlette(routes=[Route("/initialize", _ok)])
+        @asynccontextmanager
+        async def lifespan(app):
+            started["flag"] = True
+            yield
+
+        async def _ok(request):
+            # Proves lifespan actually ran for the outer app.
+            return JSONResponse({"ok": True, "lifespan_started": started["flag"]})
+
+        app = Starlette(routes=[Route("/mcp", _ok, methods=["GET", "POST"])], lifespan=lifespan)
+        # Expose the started flag so the test can assert outer lifespan forwarding.
+        app.state.started_flag = started
+        return app
 
 
 def test_health_paths_bypass_auth():
@@ -52,7 +68,7 @@ def test_mcp_path_requires_auth():
     )
     client = TestClient(app)
     # /mcp and its sub-paths go through auth.
-    assert client.get("/mcp/initialize").status_code == 401
+    assert client.get("/mcp").status_code == 401
 
 
 def test_mcpfoo_does_not_accidentally_match():
@@ -69,3 +85,33 @@ def test_mcpfoo_does_not_accidentally_match():
     # /mcpfoo doesn't exist → 404, not 401. The key assertion is "not 401".
     resp = client.get("/mcpfoo")
     assert resp.status_code != 401
+
+
+def test_outer_app_forwards_sub_app_lifespan():
+    """Regression: outer Starlette must forward FastMCP's lifespan so the
+    session-manager task group starts. Task 20 found this the hard way.
+    """
+
+    class _AllowAll(SessionFactory):
+        async def build(self, ctx: RequestContext) -> Session:
+            return Session(
+                user_id="u",
+                tenant_id="t",
+                rbac_role="r",
+                auth_method="config",
+            )
+
+    dummy = _DummyMcpApp()
+    app = build_asgi_app(
+        mcp_app=dummy,
+        factory=_AllowAll(),
+        resource_url="https://mcp.example",
+        authorization_server="https://idp.example",
+        ready_fn=lambda: True,
+    )
+    # TestClient must be entered as a context manager to trigger lifespan events;
+    # otherwise startup/shutdown are skipped and the forwarding wouldn't be tested.
+    with TestClient(app) as client:
+        resp = client.post("/mcp", json={})
+    assert resp.status_code == 200
+    assert resp.json()["lifespan_started"] is True
