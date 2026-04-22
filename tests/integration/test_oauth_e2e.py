@@ -182,46 +182,78 @@ def test_mcp_rejects_garbage_bearer(mcp_http_server):
 
 @pytest.mark.integration
 async def test_mcp_tools_list_includes_search_alerts(mcp_http_server, keycloak_token):
+    import httpx as _httpx
     from mcp import ClientSession
-    from mcp.client.streamable_http import streamablehttp_client
+    from mcp.client.streamable_http import streamable_http_client
 
     token = keycloak_token()
-    async with (
-        streamablehttp_client(
-            f"{MCP_URL}/mcp",
-            headers={"Authorization": f"Bearer {token}"},
-        ) as (read, write, _get_session_id),
-        ClientSession(read, write) as session,
-    ):
-        await session.initialize()
-        tools = await session.list_tools()
+    http_client = _httpx.AsyncClient(
+        headers={"Authorization": f"Bearer {token}"},
+        timeout=_httpx.Timeout(30.0),
+    )
+    try:
+        async with (
+            streamable_http_client(f"{MCP_URL}/mcp", http_client=http_client) as (
+                read,
+                write,
+                _get_session_id,
+            ),
+            ClientSession(read, write) as session,
+        ):
+            await session.initialize()
+            tools = await session.list_tools()
+    finally:
+        await http_client.aclose()
 
     names = [t.name for t in tools.tools]
-    assert "search_alerts" in names, f"tools/list missing search_alerts: {names}"
+    # search_alerts gets renamed later in M3 — accept either name so this commit
+    # doesn't depend on the rename landing first.
+    assert "search_alerts" in names or "alerts.search_alerts" in names, (
+        f"tools/list missing search_alerts: {names}"
+    )
 
 
 @pytest.mark.integration
-async def test_mcp_tools_call_search_alerts_returns_seeded_data(mcp_http_server, keycloak_token):
+async def test_mcp_tools_call_search_alerts_returns_seeded_data(
+    mcp_http_server, keycloak_token
+):
+    import httpx as _httpx
     from mcp import ClientSession
-    from mcp.client.streamable_http import streamablehttp_client
+    from mcp.client.streamable_http import streamable_http_client
 
     token = keycloak_token()
-    async with (
-        streamablehttp_client(
-            f"{MCP_URL}/mcp",
-            headers={"Authorization": f"Bearer {token}"},
-        ) as (read, write, _get_session_id),
-        ClientSession(read, write) as session,
-    ):
-        await session.initialize()
-        result = await session.call_tool("search_alerts", {"time_range": "24h", "size": 5})
+    http_client = _httpx.AsyncClient(
+        headers={"Authorization": f"Bearer {token}"},
+        timeout=_httpx.Timeout(30.0),
+    )
+    tool_name = "alerts.search_alerts"  # post-rename name
+    try:
+        async with (
+            streamable_http_client(f"{MCP_URL}/mcp", http_client=http_client) as (
+                read,
+                write,
+                _get_session_id,
+            ),
+            ClientSession(read, write) as session,
+        ):
+            await session.initialize()
+            try:
+                result = await session.call_tool(
+                    tool_name, {"time_range": "24h", "size": 5}
+                )
+            except Exception:
+                # fall back to the pre-rename name during the transitional window
+                result = await session.call_tool(
+                    "search_alerts", {"time_range": "24h", "size": 5}
+                )
+    finally:
+        await http_client.aclose()
 
     assert not result.isError, f"tools/call returned error: {result}"
-    # The tool return is currently double-wrapped: FastMCP uses the tool's
-    # return dict as CallToolResult.structuredContent, and that dict has its
-    # own "structuredContent" + "text" keys. Drill in accordingly.
+    # After the later flatten, shape is flat; before, it's nested. Drill defensively.
     outer = result.structuredContent
     assert outer is not None, "structuredContent missing from CallToolResult"
+    # pre-flatten shape nests under "structuredContent"; post-flatten is the outer dict
     inner = outer.get("structuredContent", outer)
     assert inner.get("total", 0) >= 1, f"no alerts returned: {inner}"
     assert isinstance(inner.get("alerts"), list)
