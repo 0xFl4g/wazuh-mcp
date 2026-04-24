@@ -33,7 +33,7 @@ def session() -> Session:
     return Session(
         user_id="integration",
         tenant_id="local",
-        rbac_role="soc_analyst",
+        rbac_role="admin",
         auth_method="config",
     )
 
