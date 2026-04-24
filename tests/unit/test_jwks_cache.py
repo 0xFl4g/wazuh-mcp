@@ -1,3 +1,5 @@
+from unittest.mock import patch
+
 import pytest
 from pytest_httpx import HTTPXMock
 
@@ -130,4 +132,31 @@ async def test_second_unknown_kid_within_ttl_does_not_refresh(httpx_mock: HTTPXM
     finally:
         await cache.aclose()
     # Discovery + initial JWKS + exactly one refresh = 3 total.
+    assert len(httpx_mock.get_requests()) == 3
+
+
+async def test_first_miss_refreshes_even_when_monotonic_is_small(httpx_mock: HTTPXMock):
+    """Regression: on Linux, time.monotonic() is seconds-since-boot and can be
+    tiny on a fresh CI container. The miss-throttle must NOT swallow the first
+    refresh when monotonic() < ttl_seconds. A previous implementation used
+    _last_refresh_on_miss = 0.0, so `now - 0.0 >= 600` was False on freshly
+    booted Linux and the first kid rotation was silently dropped.
+    """
+    httpx_mock.add_response(url=DISCOVERY_URL, json={"jwks_uri": JWKS_URL, "issuer": "x"})
+    httpx_mock.add_response(url=JWKS_URL, json=JWKS_V1)
+    httpx_mock.add_response(url=JWKS_URL, json=JWKS_V2)
+
+    import wazuh_mcp.auth.jwks_cache as _mod
+
+    # Pin monotonic to 5 seconds — well under the 600 s TTL — to prove the
+    # gate does not depend on process uptime exceeding the TTL.
+    with patch.object(_mod.time, "monotonic", return_value=5.0):
+        cache = JwksCache(issuer="https://idp.example.com")
+        try:
+            key = await cache.get_key("key-b")  # unknown kid → must refresh
+        finally:
+            await cache.aclose()
+
+    assert key is not None
+    assert key["kid"] == "key-b"
     assert len(httpx_mock.get_requests()) == 3

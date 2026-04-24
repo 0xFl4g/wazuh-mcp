@@ -42,7 +42,14 @@ class JwksCache:
         self._ttl: int = ttl_seconds
         self._client: httpx.AsyncClient = httpx.AsyncClient(timeout=timeout)
         self._lock: asyncio.Lock = asyncio.Lock()
-        self._last_refresh_on_miss: float = 0.0
+        # -inf ensures the FIRST unknown-kid miss always triggers a refresh.
+        # Using 0.0 here is a bug on platforms where time.monotonic() starts
+        # small: on Linux it returns seconds since system boot, so a freshly
+        # booted container (e.g. ephemeral CI runner) can see monotonic() <
+        # ttl_seconds, and `now - 0.0 >= ttl` is False — the first rotation
+        # would be silently skipped. macOS monotonic is always large enough
+        # to hide this; CI caught it.
+        self._last_refresh_on_miss: float = float("-inf")
 
     async def get_key(self, kid: str) -> dict[str, Any] | None:
         await self._ensure_discovered()
