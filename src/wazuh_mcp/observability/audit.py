@@ -14,6 +14,7 @@ choose it explicitly in config.
 """
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
 from collections.abc import Sequence
@@ -56,12 +57,33 @@ class MultiSinkAuditEmitter:
                     s._record_drop = _recorder  # ty: ignore[invalid-assignment]
 
     async def start(self) -> None:
-        for s in self.sinks:
-            await s.start()
+        # Start sinks in order, rolling back any that did start if a later
+        # sink's start() raises. Otherwise stop() would later run on a
+        # never-started sink and mask the real failure.
+        started: list[AuditSink] = []
+        try:
+            for s in self.sinks:
+                await s.start()
+                started.append(s)
+        except BaseException:
+            for s in reversed(started):
+                # Best-effort cleanup; the original exception wins.
+                with contextlib.suppress(Exception):
+                    await s.stop()
+            raise
 
     async def stop(self) -> None:
+        # Best-effort: each sink's stop() is independent; one failing must
+        # not prevent the others from shutting down. Collect and re-raise
+        # as an ExceptionGroup so callers can inspect every failure.
+        errors: list[BaseException] = []
         for s in self.sinks:
-            await s.stop()
+            try:
+                await s.stop()
+            except BaseException as exc:
+                errors.append(exc)
+        if errors:
+            raise BaseExceptionGroup("sink stop failures", errors)
 
     def emit(
         self,

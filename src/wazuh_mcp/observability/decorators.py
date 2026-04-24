@@ -29,6 +29,7 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 
 from opentelemetry import trace
+from pydantic import ValidationError as _PydanticValidationError
 
 from wazuh_mcp.auth.session import Session
 from wazuh_mcp.observability.audit import MultiSinkAuditEmitter
@@ -135,6 +136,36 @@ def instrumented_tool(
                     result_count=0,
                     duration_ms=int(elapsed * 1000),
                     error_code=e.code,
+                )
+                raise
+            except _PydanticValidationError:
+                # Preserve the M3 `parse_error` label. Pre-refactor, each
+                # tool body caught ValidationError and emitted error_code=
+                # parse_error directly; post-refactor the inner handler
+                # raises and the decorator has to keep that label visible
+                # in both the metric and the audit trail.
+                elapsed = time.perf_counter() - start
+                span.set_attribute("mcp.outcome", "parse_error")
+                counters["mcp_tool_calls_total"].add(
+                    1,
+                    {
+                        "tenant": session.tenant_id,
+                        "tool": tool_name,
+                        "outcome": "parse_error",
+                    },
+                )
+                counters["mcp_tool_duration_seconds"].record(
+                    elapsed,
+                    {"tenant": session.tenant_id, "tool": tool_name},
+                )
+                audit.emit(
+                    session=session,
+                    tool=tool_name,
+                    args=kwargs,
+                    outcome="error",
+                    result_count=0,
+                    duration_ms=int(elapsed * 1000),
+                    error_code="parse_error",
                 )
                 raise
             except Exception:

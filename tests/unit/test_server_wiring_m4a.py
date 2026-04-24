@@ -92,7 +92,7 @@ def test_rbac_list_tools_handler_identity_pinning() -> None:
     fastmcp_list_handler = list_slot
     fastmcp_call_handler = call_slot
 
-    _install_rbac_hooks(mcp_app, rbac_policy=_policy_allow_admin)
+    _install_rbac_hooks(mcp_app, rbac_policy=_policy_allow_admin, audit_emitter=audit)
 
     # Post-install: the slot MUST have been replaced by a new object.
     assert mcp_app._mcp_server.request_handlers[_mt.ListToolsRequest] is not fastmcp_list_handler
@@ -114,7 +114,7 @@ async def test_rbac_list_tools_filter_allows_admin_denies_empty() -> None:
         limiter=limiter,
         rbac_policy=_policy_allow_admin,
     )
-    _install_rbac_hooks(mcp_app, rbac_policy=_policy_allow_admin)
+    _install_rbac_hooks(mcp_app, rbac_policy=_policy_allow_admin, audit_emitter=audit)
 
     session = Session(
         user_id="u", tenant_id="t", rbac_role="admin", auth_method="oauth"
@@ -134,13 +134,73 @@ async def test_rbac_list_tools_filter_allows_admin_denies_empty() -> None:
         assert len(tools) == 17
 
         # Swap in a deny-all policy and re-install to exercise filtering.
-        _install_rbac_hooks(mcp_app, rbac_policy=_policy_deny_all)
+        _install_rbac_hooks(mcp_app, rbac_policy=_policy_deny_all, audit_emitter=audit)
         handler2 = mcp_app._mcp_server.request_handlers[mt.ListToolsRequest]
         result2 = await handler2(req)
         tools2 = result2.root.tools  # ty: ignore[unresolved-attribute]
         assert len(tools2) == 0
     finally:
         CURRENT_SESSION.reset(token)
+
+
+@pytest.mark.asyncio
+async def test_rbac_call_tool_deny_emits_forbidden_audit() -> None:
+    """Call-time RBAC deny must emit an audit event BEFORE raising — the
+    instrumented_tool decorator's forbidden branch is unreachable for
+    dispatches short-circuited in _rbac_call_tool, so this hook is the
+    only place an audit trail for a call-time deny gets written.
+    """
+    import asyncio
+
+    import mcp.types as mt
+
+    out = io.StringIO()
+    audit = AuditEmitter(sinks=[StderrSink(stream=out)])
+    await audit.start()
+    try:
+        mcp_app = FastMCP(name="test")
+        limiter = InProcessRateLimiter(default=RateLimitConfig())
+        _register_everything(
+            mcp_app,
+            indexer_pool=_StubPool(),
+            server_api_pool=_StubPool(),
+            audit_emitter=audit,
+            limiter=limiter,
+            rbac_policy=_policy_deny_all,
+        )
+        _install_rbac_hooks(mcp_app, rbac_policy=_policy_deny_all, audit_emitter=audit)
+
+        session = Session(
+            user_id="u", tenant_id="t", rbac_role="admin", auth_method="oauth"
+        )
+        token = set_current_session(session)
+        try:
+            req = mt.CallToolRequest(
+                method="tools/call",
+                params=mt.CallToolRequestParams(name="alerts.search_alerts", arguments={}),
+            )
+            handler = mcp_app._mcp_server.request_handlers[mt.CallToolRequest]
+            # ToolError is what the hook raises on deny; FastMCP's
+            # low-level dispatcher may convert it to a CallToolResult
+            # with isError=True instead of raising. Either way, the
+            # audit side-effect is what this test pins.
+            try:
+                result = await handler(req)
+            except Exception:
+                result = None
+            if result is not None:
+                # Low-level dispatcher returned an error result instead
+                # of raising; the deny still must have been audited.
+                _ = result
+        finally:
+            CURRENT_SESSION.reset(token)
+        # Let the sink's background drain task flush.
+        await asyncio.sleep(0.05)
+    finally:
+        await audit.stop()
+    output = out.getvalue()
+    assert '"error_code": "forbidden"' in output, output
+    assert '"tool": "alerts.search_alerts"' in output, output
 
 
 @pytest.mark.asyncio
@@ -171,3 +231,59 @@ async def test_metrics_route_mounted_on_http_app() -> None:
     base = asgi.app  # SessionMiddleware.app == inner Starlette
     paths = {r.path for r in base.routes if isinstance(r, Route)}
     assert "/metrics" in paths
+
+
+def test_http_lifespan_starts_audit_emitter_and_serves_metrics() -> None:
+    """TestClient's context-manager exercises the ASGI lifespan end-to-end,
+    so the audit emitter's start() must actually run and /metrics must
+    serve Prom-format text. build_http_app needs a real factory/pool that
+    would be disproportionately expensive to fake in a unit test, so we
+    mirror the existing M4a pattern: build_asgi_app directly with an
+    audit_emitter and assert both lifespan side-effects and the route.
+    """
+    from starlette.testclient import TestClient
+
+    from wazuh_mcp.auth.factory import SessionFactory
+    from wazuh_mcp.observability.otel import init_otel
+    from wazuh_mcp.transport.http import build_asgi_app
+
+    init_otel(service_version="test")
+
+    class _NoopFactory(SessionFactory):
+        async def build(self, ctx):  # pragma: no cover - unused in this test
+            raise RuntimeError("not used")
+
+    # Track that start/stop actually fired from the lifespan.
+    calls = {"start": 0, "stop": 0}
+
+    class _SpySink:
+        name = "spy"
+
+        async def start(self) -> None:
+            calls["start"] += 1
+
+        async def stop(self) -> None:
+            calls["stop"] += 1
+
+        def submit(self, event):  # pragma: no cover - unused in this test
+            pass
+
+    audit = AuditEmitter(sinks=[_SpySink()])
+    mcp_app = FastMCP(name="test")
+    asgi = build_asgi_app(
+        mcp_app=mcp_app,
+        factory=_NoopFactory(),
+        resource_url="https://mcp.example",
+        authorization_server="https://auth.example",
+        ready_fn=lambda: True,
+        audit_emitter=audit,
+    )
+    with TestClient(asgi) as client:
+        # Lifespan entered here; emitter.start() must have fired.
+        assert calls["start"] == 1
+        resp = client.get("/metrics")
+    # Lifespan exited on the TestClient __exit__; emitter.stop() must have fired.
+    assert calls["stop"] == 1
+    assert resp.status_code == 200
+    assert resp.headers["content-type"].startswith("text/plain")
+    assert len(resp.text) > 0

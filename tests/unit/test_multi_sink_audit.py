@@ -57,6 +57,89 @@ async def test_none_sinks_also_defaults() -> None:
 
 
 @pytest.mark.asyncio
+async def test_start_rolls_back_on_partial_failure() -> None:
+    """If sink 2's start() raises, sink 1's start() is rolled back via stop()
+    so a later stop() on the whole emitter doesn't re-run on an un-started
+    sink and mask the real failure.
+    """
+    good_stop_calls = {"n": 0}
+
+    class _GoodSink:
+        name = "good"
+
+        async def start(self) -> None:
+            pass
+
+        async def stop(self) -> None:
+            good_stop_calls["n"] += 1
+
+        def submit(self, event):
+            pass
+
+    class _FailingSink:
+        name = "failing"
+
+        async def start(self):
+            raise RuntimeError("sink start failed")
+
+        async def stop(self):
+            pass
+
+        def submit(self, event):
+            pass
+
+    good = _GoodSink()
+    bad = _FailingSink()
+    em = MultiSinkAuditEmitter(sinks=[good, bad])
+    with pytest.raises(RuntimeError, match="sink start failed"):
+        await em.start()
+    # The good sink MUST have been rolled back (stopped) during start() failure.
+    assert good_stop_calls["n"] == 1
+
+
+@pytest.mark.asyncio
+async def test_stop_continues_past_sink_failure() -> None:
+    """One sink's stop() raising must not prevent others from stopping.
+    All failures are surfaced in a BaseExceptionGroup so the caller can
+    see every per-sink failure rather than just the first.
+    """
+    good_stop_calls = {"n": 0}
+
+    class _FailingOnStop:
+        name = "failing_stop"
+
+        async def start(self) -> None:
+            pass
+
+        async def stop(self) -> None:
+            raise RuntimeError("stop failed")
+
+        def submit(self, event):
+            pass
+
+    class _GoodSink:
+        name = "good"
+
+        async def start(self) -> None:
+            pass
+
+        async def stop(self) -> None:
+            good_stop_calls["n"] += 1
+
+        def submit(self, event):
+            pass
+
+    fail = _FailingOnStop()
+    good = _GoodSink()
+    em = MultiSinkAuditEmitter(sinks=[fail, good])
+    await em.start()
+    with pytest.raises(BaseExceptionGroup):
+        await em.stop()
+    # Downstream sink MUST have been stopped even though an earlier sink raised.
+    assert good_stop_calls["n"] == 1
+
+
+@pytest.mark.asyncio
 async def test_emit_synchronous_non_blocking() -> None:
     """emit() must never block — it enqueues on each sink and returns."""
     import time

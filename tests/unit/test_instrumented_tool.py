@@ -263,6 +263,45 @@ async def test_cancelled_handler_still_audits() -> None:
 
 
 @pytest.mark.asyncio
+async def test_pydantic_validation_error_audits_parse_error() -> None:
+    """Pydantic ValidationError is audited with error_code=parse_error —
+    preserves the M3 per-tool label that was lost when the inner handler
+    stopped catching ValidationError itself.
+    """
+    import asyncio
+
+    from pydantic import BaseModel, ValidationError
+
+    class _Args(BaseModel):
+        n: int
+
+    out = io.StringIO()
+    emitter = MultiSinkAuditEmitter(sinks=[StderrSink(stream=out)])
+    await emitter.start()
+    try:
+        async def _bad(**kw):
+            _Args(**kw)   # raises ValidationError for n=non-int
+            return {}
+        wrapped = instrumented_tool(
+            tool_name="alerts.search_alerts",
+            handler=_bad,
+            rbac_policy=_policy,
+            limiter=_limiter(),
+            audit=emitter,
+        )
+        token = CURRENT_SESSION.set(_session("admin"))
+        try:
+            with pytest.raises(ValidationError):
+                await wrapped(n="not_an_int")
+        finally:
+            CURRENT_SESSION.reset(token)
+        await asyncio.sleep(0.05)
+    finally:
+        await emitter.stop()
+    assert '"error_code": "parse_error"' in out.getvalue()
+
+
+@pytest.mark.asyncio
 async def test_functools_wraps_preserved() -> None:
     """functools.wraps preserves __wrapped__ and __doc__ for FastMCP introspection."""
     async def _original(**kw) -> dict:

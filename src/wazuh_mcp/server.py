@@ -11,6 +11,7 @@ list_tools/call_tool hooks install RBAC filter/guard on the low-level server.
 from __future__ import annotations
 
 import importlib.metadata
+import logging
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -50,6 +51,8 @@ from wazuh_mcp.wazuh.indexer import IndexerClient
 from wazuh_mcp.wazuh.indexer_pool import IndexerClientPool
 from wazuh_mcp.wazuh.server_api import ServerApiClient
 from wazuh_mcp.wazuh.server_api_pool import ServerApiClientPool
+
+_logger = logging.getLogger("wazuh_mcp.server")
 
 
 def _service_version() -> str:
@@ -140,6 +143,7 @@ def _install_rbac_hooks(
     mcp_app: FastMCP,
     *,
     rbac_policy: Callable[[Session], dict[str, list[str]]],
+    audit_emitter: MultiSinkAuditEmitter,
 ) -> None:
     """Install list_tools + call_tool wrappers on the low-level MCP server.
 
@@ -159,7 +163,13 @@ def _install_rbac_hooks(
             session = current_session()
         except LookupError:
             # stdio pre-session path: the process itself is the trust
-            # boundary, allow-all is the right default.
+            # boundary, allow-all is the right default. Log so an
+            # unexpected pre-session list_tools in a stdio deploy still
+            # leaves a signal operators can find.
+            _logger.info(
+                "list_tools without session contextvar — stdio pre-session "
+                "trust-boundary allow-all"
+            )
             return all_tools
         policy = rbac_policy(session)
         return [t for t in all_tools if is_allowed(session, t.name, policy)]
@@ -168,9 +178,22 @@ def _install_rbac_hooks(
         session = current_session()
         policy = rbac_policy(session)
         if not is_allowed(session, name, policy):
-            # Avoid info leak: a denied tool looks like an unknown tool
-            # from outside. The audit event (emitted by @instrumented_tool
-            # when call_tool dispatches) still records the forbidden outcome.
+            # Audit the deny BEFORE raising, so a red-team probing denied
+            # tools leaves a trail. The @instrumented_tool decorator's
+            # forbidden-emit branch is unreachable from here — we short-
+            # circuit before dispatch — so this is the only audit event a
+            # call-time RBAC rejection will ever produce.
+            audit_emitter.emit(
+                session=session,
+                tool=name,
+                args=arguments,
+                outcome="error",
+                result_count=0,
+                duration_ms=0,
+                error_code="forbidden",
+            )
+            # Info-hiding: a denied tool looks identical to an unknown tool
+            # from outside (same error, no hint that the tool exists).
             raise ToolError(f"Unknown tool: {name}")
         return await _fastmcp_call_tool(name, arguments)
 
@@ -253,6 +276,12 @@ def build_app(cfg: AppConfig, audit: MultiSinkAuditEmitter | None = None) -> Fas
             return await _open_server_api()
 
     def _rbac_policy(session: Session) -> dict[str, list[str]]:
+        # TODO(M4b): resolve tenant-specific override via TenantRegistry.
+        # Today we capture the primary tenant's allowlist — fine for
+        # single-tenant stdio, but an enterprise multi-tenant deploy will
+        # need session.tenant_id → tenant_cfg.role_tool_allowlist lookup
+        # here. The `session` arg must stay in the signature so a future
+        # refactor doesn't innocently delete it.
         return effective_allowlist_for(tenant_override=cfg.tenant.role_tool_allowlist)
 
     _register_everything(
@@ -263,7 +292,7 @@ def build_app(cfg: AppConfig, audit: MultiSinkAuditEmitter | None = None) -> Fas
         limiter=limiter,
         rbac_policy=_rbac_policy,
     )
-    _install_rbac_hooks(app, rbac_policy=_rbac_policy)
+    _install_rbac_hooks(app, rbac_policy=_rbac_policy, audit_emitter=audit_emitter)
 
     # Expose the emitter so the stdio runner can manage lifecycle.
     app._wazuh_mcp_audit_emitter = audit_emitter  # ty: ignore[unresolved-attribute]
@@ -392,6 +421,12 @@ def build_http_app(http_cfg: HttpAppConfig, audit: MultiSinkAuditEmitter | None 
     mcp_app = FastMCP(name="wazuh-mcp")
 
     def _rbac_policy(session: Session) -> dict[str, list[str]]:
+        # TODO(M4b): resolve tenant-specific override via TenantRegistry.
+        # Today we capture the primary tenant's allowlist — fine for
+        # single-tenant HTTP, but an enterprise multi-tenant deploy will
+        # need session.tenant_id → tenant_cfg.role_tool_allowlist lookup
+        # here. The `session` arg must stay in the signature so a future
+        # refactor doesn't innocently delete it.
         override = http_cfg.tenant.role_tool_allowlist if http_cfg.tenant is not None else None
         return effective_allowlist_for(tenant_override=override)
 
@@ -403,7 +438,7 @@ def build_http_app(http_cfg: HttpAppConfig, audit: MultiSinkAuditEmitter | None 
         limiter=limiter,
         rbac_policy=_rbac_policy,
     )
-    _install_rbac_hooks(mcp_app, rbac_policy=_rbac_policy)
+    _install_rbac_hooks(mcp_app, rbac_policy=_rbac_policy, audit_emitter=audit_emitter)
 
     ready = [False]
 
