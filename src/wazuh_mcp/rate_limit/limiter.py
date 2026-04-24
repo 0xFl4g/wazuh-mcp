@@ -49,9 +49,7 @@ class InProcessRateLimiter:
     async def acquire(self, tenant_id: str, session_id: str) -> None:
         async with self._lock:
             cfg = self._cfg(tenant_id)
-            tbucket = self._tenant_buckets.setdefault(
-                tenant_id, _mk_bucket(cfg.tenant)
-            )
+            tbucket = self._tenant_buckets.setdefault(tenant_id, _mk_bucket(cfg.tenant))
             if not tbucket.try_acquire():
                 raise WazuhError("rate_limited", "tenant rate limit exceeded", 429)
             skey = (tenant_id, session_id)

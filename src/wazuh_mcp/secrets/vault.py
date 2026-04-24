@@ -10,6 +10,7 @@ Secret path convention: `{prefix}{tenant_id}/{key}`, read from the KV v2
 mount `secret/` (the Vault default). The value at that path must be a
 mapping with a `value` key whose value is the secret string.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -34,9 +35,7 @@ class VaultSecretStore:
         **client_kwargs: Any,
     ) -> None:
         if token is None and (role_id is None or secret_id is None):
-            raise ValueError(
-                "VaultSecretStore needs either a token or AppRole role_id+secret_id"
-            )
+            raise ValueError("VaultSecretStore needs either a token or AppRole role_id+secret_id")
         self._address = address
         self._token = token
         self._role_id = role_id

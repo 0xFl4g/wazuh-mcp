@@ -9,6 +9,7 @@ awaits ``.content``/``raw.read()`` — neither of which moto's sync
 ``aiobotocore.endpoint.convert_to_response_dict`` for the duration of
 these tests so it can consume moto's synchronous response shape.
 """
+
 from __future__ import annotations
 
 import aiobotocore.endpoint
@@ -30,10 +31,7 @@ async def _sync_compatible_convert_to_response_dict(http_response, operation_mod
     raw_headers = getattr(raw, "raw_headers", None)
     if raw_headers is not None:
         headers = HTTPHeaderDict(
-            {
-                k.decode("utf-8").lower(): v.decode("utf-8")
-                for k, v in raw_headers
-            }
+            {k.decode("utf-8").lower(): v.decode("utf-8") for k, v in raw_headers}
         )
     else:
         headers = HTTPHeaderDict()

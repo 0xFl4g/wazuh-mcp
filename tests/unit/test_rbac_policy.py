@@ -1,4 +1,5 @@
 """RBAC policy: global defaults + per-tenant override merge."""
+
 from __future__ import annotations
 
 from wazuh_mcp.rbac.policy import (
@@ -48,7 +49,7 @@ def test_override_replaces_per_role() -> None:
     override = {"analyst": ["alerts.search_alerts"]}
     result = effective_allowlist_for(tenant_override=override)
     assert result["analyst"] == ["alerts.search_alerts"]
-    assert result["admin"] == ["*"]   # unchanged
+    assert result["admin"] == ["*"]  # unchanged
     assert result["readonly"] == DEFAULT_ROLE_TOOL_ALLOWLIST["readonly"]
 
 

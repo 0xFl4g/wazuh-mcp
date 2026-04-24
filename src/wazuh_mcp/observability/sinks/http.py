@@ -13,6 +13,7 @@ invariants the base's _drain_loop enforces:
 - use self._safe_record_drop, never self._record_drop
 - interruptible backoff via _stop.wait()
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -100,5 +101,5 @@ class HttpSink(QueuedSink):
                         pass
 
     # Make the abstract _deliver resolvable (HttpSink uses its own loop).
-    async def _deliver(self, event: dict[str, Any]) -> None:   # pragma: no cover
+    async def _deliver(self, event: dict[str, Any]) -> None:  # pragma: no cover
         raise RuntimeError("HttpSink uses batched _drain_loop, not per-event _deliver")

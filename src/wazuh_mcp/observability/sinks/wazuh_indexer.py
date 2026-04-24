@@ -10,6 +10,7 @@ IMPORTANT invariants (inherited from QueuedSink base):
 - task_done() after every queue.get()
 - use self._safe_record_drop, never self._record_drop
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -72,9 +73,7 @@ class WazuhIndexerSink(QueuedSink):
         if self._template_installed:
             return
         client = await self._pool.acquire(self._tenant_id)
-        await client.put_index_template(
-            name=f"{self._prefix}-template", body=_INDEX_TEMPLATE_BODY
-        )
+        await client.put_index_template(name=f"{self._prefix}-template", body=_INDEX_TEMPLATE_BODY)
         self._template_installed = True
 
     def _today_index(self) -> str:
@@ -136,5 +135,5 @@ class WazuhIndexerSink(QueuedSink):
                 except TimeoutError:
                     pass
 
-    async def _deliver(self, event: dict[str, Any]) -> None:   # pragma: no cover
+    async def _deliver(self, event: dict[str, Any]) -> None:  # pragma: no cover
         raise RuntimeError("WazuhIndexerSink uses batched _drain_loop")

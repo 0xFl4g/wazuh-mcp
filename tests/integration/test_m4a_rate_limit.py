@@ -6,6 +6,7 @@ drain the bucket; the fourth must fail with a rate-limited error before
 the bucket can meaningfully refill. Drives the real tenant ->
 InProcessRateLimiter wiring and the WazuhError -> MCP error payload path.
 """
+
 from __future__ import annotations
 
 import os
@@ -146,14 +147,10 @@ async def test_session_bucket_exhaustion_rejects_fourth_call(
         ):
             await session.initialize()
             for i in range(3):
-                r = await session.call_tool(
-                    "alerts.search_alerts", {"time_range": "1h", "size": 1}
-                )
+                r = await session.call_tool("alerts.search_alerts", {"time_range": "1h", "size": 1})
                 assert not r.isError, f"call #{i + 1} should fit in the bucket, got: {r}"
             # 4th call: bucket drained, refill negligible.
-            r = await session.call_tool(
-                "alerts.search_alerts", {"time_range": "1h", "size": 1}
-            )
+            r = await session.call_tool("alerts.search_alerts", {"time_range": "1h", "size": 1})
     finally:
         await http_client.aclose()
 

@@ -1,5 +1,6 @@
 """QueuedSink: bounded queue, fan-out drop-oldest, exponential backoff, clean
 shutdown."""
+
 from __future__ import annotations
 
 import asyncio
@@ -39,8 +40,10 @@ async def test_normal_delivery() -> None:
     sink.submit({"tool": "alerts.search_alerts", "n": 1})
     sink.submit({"tool": "alerts.search_alerts", "n": 2})
     await sink.stop()
-    assert sink.delivered == [{"tool": "alerts.search_alerts", "n": 1},
-                              {"tool": "alerts.search_alerts", "n": 2}]
+    assert sink.delivered == [
+        {"tool": "alerts.search_alerts", "n": 1},
+        {"tool": "alerts.search_alerts", "n": 2},
+    ]
 
 
 @pytest.mark.asyncio
@@ -48,10 +51,10 @@ async def test_retry_then_success() -> None:
     sink = _ListSink(fail_first_n=2)
     await sink.start()
     sink.submit({"n": 1})
-    await asyncio.sleep(0.1)   # let backoff play out
+    await asyncio.sleep(0.1)  # let backoff play out
     await sink.stop()
     assert sink.delivered == [{"n": 1}]
-    assert sink.attempts == 3   # 2 failures + 1 success
+    assert sink.attempts == 3  # 2 failures + 1 success
 
 
 @pytest.mark.asyncio
@@ -73,7 +76,7 @@ async def test_bounded_queue_drops_oldest_when_full() -> None:
     sink.submit({"n": 1})
     sink.submit({"n": 2})
     sink.submit({"n": 3})
-    sink.submit({"n": 4})   # should evict {"n": 1}
+    sink.submit({"n": 4})  # should evict {"n": 1}
     assert any(d[1] == "overflow" for d in sink.dropped)
     await sink.start()
     await sink.stop()
@@ -95,7 +98,7 @@ async def test_stop_drains_remaining() -> None:
 @pytest.mark.asyncio
 async def test_shutdown_timeout_does_not_hang() -> None:
     """Slow/failing delivery does not extend shutdown beyond shutdown_timeout."""
-    sink = _ListSink(fail_first_n=1_000_000, max_attempts=5)   # will never succeed
+    sink = _ListSink(fail_first_n=1_000_000, max_attempts=5)  # will never succeed
     sink._shutdown_timeout = 0.3  # tight bound for the test
     await sink.start()
     for i in range(20):
@@ -114,7 +117,7 @@ async def test_backoff_interruptible_by_stop() -> None:
     sink._backoff_base = 2.0  # 2s base - shutdown must be faster
     await sink.start()
     sink.submit({"n": 1})
-    await asyncio.sleep(0.05)   # let the first failure happen and enter backoff
+    await asyncio.sleep(0.05)  # let the first failure happen and enter backoff
     t0 = time.monotonic()
     await sink.stop()
     elapsed = time.monotonic() - t0
@@ -141,7 +144,7 @@ async def test_record_drop_exception_does_not_leak() -> None:
     sink = _BuggyHook()
     # Pre-start overflow exercises _safe_record_drop before drain runs.
     for i in range(5):
-        sink.submit({"n": i})   # must not raise
+        sink.submit({"n": i})  # must not raise
     await sink.start()
     await sink.stop()
     # Drain still works; some events delivered.
@@ -162,4 +165,4 @@ async def test_submit_before_start_buffers_and_drains() -> None:
 @pytest.mark.asyncio
 async def test_stop_without_start_is_idempotent() -> None:
     sink = _ListSink()
-    await sink.stop()   # must not hang or raise
+    await sink.stop()  # must not hang or raise

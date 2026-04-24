@@ -1,4 +1,5 @@
 """RBAC matcher: prefix (`alerts.*`) + exact (`hunt.hunt_query`)."""
+
 from __future__ import annotations
 
 from wazuh_mcp.auth.session import Session
@@ -21,8 +22,8 @@ def test_exact_match() -> None:
 
 def test_prefix_match_requires_dot() -> None:
     assert tool_matches("alerts.search_alerts", ["alerts.*"]) is True
-    assert tool_matches("alertsfoo.x", ["alerts.*"]) is False   # no dot — not a prefix match
-    assert tool_matches("alerts", ["alerts.*"]) is False        # wildcard requires suffix
+    assert tool_matches("alertsfoo.x", ["alerts.*"]) is False  # no dot — not a prefix match
+    assert tool_matches("alerts", ["alerts.*"]) is False  # wildcard requires suffix
 
 
 def test_wildcard_star_matches_any() -> None:

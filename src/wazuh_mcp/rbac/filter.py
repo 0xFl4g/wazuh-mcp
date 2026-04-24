@@ -4,6 +4,7 @@ Pattern language: `*` allows every tool, `<domain>.*` allows any tool
 in that dotted domain, exact names match exactly. No regex. No case
 folding.
 """
+
 from __future__ import annotations
 
 from wazuh_mcp.auth.session import Session
@@ -16,7 +17,7 @@ def tool_matches(tool_name: str, allowlist: list[str]) -> bool:
         if pattern == tool_name:
             return True
         if pattern.endswith(".*"):
-            prefix = pattern[:-2]   # drop ".*" suffix
+            prefix = pattern[:-2]  # drop ".*" suffix
             if tool_name.startswith(prefix + "."):
                 return True
     return False

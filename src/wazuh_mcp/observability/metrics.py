@@ -1,6 +1,7 @@
 """Prom metric definitions, /metrics route factory, optional stdio
 metrics HTTP server.
 """
+
 from __future__ import annotations
 
 import os

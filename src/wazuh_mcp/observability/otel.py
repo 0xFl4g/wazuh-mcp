@@ -6,6 +6,7 @@ configured by the operator via standard OTel env vars
 ourselves. The Prometheus exporter is configured inline and reachable
 through metrics.get_meter(...); the /metrics route reads its registry.
 """
+
 from __future__ import annotations
 
 from opentelemetry import metrics, trace
@@ -42,9 +43,7 @@ def init_otel(*, service_version: str) -> None:
     # read from the same place the reader writes to.
     _prom_reader = PrometheusMetricReader()
     _prom_registry = _GLOBAL_PROM_REGISTRY
-    metrics.set_meter_provider(
-        MeterProvider(resource=resource, metric_readers=[_prom_reader])
-    )
+    metrics.set_meter_provider(MeterProvider(resource=resource, metric_readers=[_prom_reader]))
     _initialized = True
 
 

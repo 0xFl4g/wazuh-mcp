@@ -1,4 +1,5 @@
 """/metrics route returns Prometheus text format including M4a families."""
+
 from __future__ import annotations
 
 import pytest

@@ -1,4 +1,5 @@
 """MultiSinkAuditEmitter: fan-out to multiple sinks, metric-bumped drops."""
+
 from __future__ import annotations
 
 import asyncio
@@ -19,8 +20,14 @@ async def test_emit_fans_out_to_all_sinks() -> None:
     em = MultiSinkAuditEmitter(sinks=[sink1, sink2])
     await em.start()
     s = Session(user_id="u", tenant_id="t", rbac_role="analyst", auth_method="config")
-    em.emit(session=s, tool="alerts.search_alerts", args={"q": "x"},
-            outcome="ok", result_count=3, duration_ms=12)
+    em.emit(
+        session=s,
+        tool="alerts.search_alerts",
+        args={"q": "x"},
+        outcome="ok",
+        result_count=3,
+        duration_ms=12,
+    )
     await asyncio.sleep(0.1)
     await em.stop()
     assert "alerts.search_alerts" in out1.getvalue()
@@ -41,8 +48,14 @@ async def test_emit_args_hashed_not_logged() -> None:
     em = MultiSinkAuditEmitter(sinks=[StderrSink(stream=out)])
     await em.start()
     s = Session(user_id="u", tenant_id="t", rbac_role="analyst", auth_method="config")
-    em.emit(session=s, tool="t", args={"password": "hunter2"},
-            outcome="ok", result_count=0, duration_ms=1)
+    em.emit(
+        session=s,
+        tool="t",
+        args={"password": "hunter2"},
+        outcome="ok",
+        result_count=0,
+        duration_ms=1,
+    )
     await asyncio.sleep(0.1)
     await em.stop()
     assert "hunter2" not in out.getvalue()
@@ -143,6 +156,7 @@ async def test_stop_continues_past_sink_failure() -> None:
 async def test_emit_synchronous_non_blocking() -> None:
     """emit() must never block — it enqueues on each sink and returns."""
     import time
+
     em = MultiSinkAuditEmitter(sinks=[StderrSink(stream=io.StringIO())])
     await em.start()
     s = Session(user_id="u", tenant_id="t", rbac_role="analyst", auth_method="config")

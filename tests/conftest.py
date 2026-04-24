@@ -6,6 +6,7 @@ Hooks here:
     WAZUH_MCP_FORCE_ARM64_DARWIN=1 forces the skip for local verification
     on non-arm64 machines (used by tests/unit/test_requires_manager_marker.py).
 """
+
 from __future__ import annotations
 
 import os

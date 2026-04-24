@@ -1,4 +1,5 @@
 """HttpSink: batched POSTs with backoff on transient failure."""
+
 from __future__ import annotations
 
 import asyncio
@@ -29,8 +30,13 @@ async def test_batches_and_posts(httpx_mock) -> None:
 async def test_retries_on_5xx_then_succeeds(httpx_mock) -> None:
     httpx_mock.add_response(url="https://siem.example/ingest", status_code=503)
     httpx_mock.add_response(url="https://siem.example/ingest", status_code=200)
-    sink = HttpSink(url="https://siem.example/ingest", batch=1, flush_ms=10, max_attempts=3,
-                    backoff_base_s=0.001)
+    sink = HttpSink(
+        url="https://siem.example/ingest",
+        batch=1,
+        flush_ms=10,
+        max_attempts=3,
+        backoff_base_s=0.001,
+    )
     await sink.start()
     sink.submit({"n": 1})
     await asyncio.sleep(0.3)
@@ -44,8 +50,13 @@ async def test_drops_after_max_attempts(httpx_mock) -> None:
     for _ in range(5):
         httpx_mock.add_response(url="https://siem.example/ingest", status_code=503)
     drops: list[str] = []
-    sink = HttpSink(url="https://siem.example/ingest", batch=1, flush_ms=10, max_attempts=3,
-                    backoff_base_s=0.001)
+    sink = HttpSink(
+        url="https://siem.example/ingest",
+        batch=1,
+        flush_ms=10,
+        max_attempts=3,
+        backoff_base_s=0.001,
+    )
     sink._record_drop = lambda ev, reason: drops.append(reason)
     await sink.start()
     sink.submit({"n": 1})

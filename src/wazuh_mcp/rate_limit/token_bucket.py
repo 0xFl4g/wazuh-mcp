@@ -33,9 +33,7 @@ class TokenBucket:
         now = self._now()
         elapsed = now - self._last
         if elapsed > 0:
-            self._tokens = min(
-                float(self._capacity), self._tokens + elapsed * self._refill
-            )
+            self._tokens = min(float(self._capacity), self._tokens + elapsed * self._refill)
         self._last = now
 
     def try_acquire(self, n: int = 1) -> bool:

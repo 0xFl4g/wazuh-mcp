@@ -63,9 +63,7 @@ async def test_concurrent_acquires_race_safe() -> None:
     """The bucket primitive itself isn't locked, so we verify the expected
     behaviour: callers wrap it. This test just confirms it doesn't explode."""
     b = TokenBucket(capacity=100, refill_per_sec=1.0, now=lambda: 0.0)
-    results = await asyncio.gather(
-        *[asyncio.to_thread(b.try_acquire) for _ in range(200)]
-    )
+    results = await asyncio.gather(*[asyncio.to_thread(b.try_acquire) for _ in range(200)])
     # With a shared lock in the limiter (tested elsewhere), exactly 100 succeed.
     # Without the lock, we allow some races but bound them.
     assert 80 <= sum(results) <= 120

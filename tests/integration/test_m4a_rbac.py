@@ -8,6 +8,7 @@ for ``readonly`` excludes ``hunt.*``; the test asserts that hunt tools
 are filtered from ``tools/list`` AND denied at ``tools/call`` time even
 if a client bypasses list filtering.
 """
+
 from __future__ import annotations
 
 import os

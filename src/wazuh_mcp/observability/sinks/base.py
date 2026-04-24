@@ -152,11 +152,11 @@ class QueuedSink:
                     # Normal: backoff completed without stop. Continue retrying.
                     pass
 
-    async def _deliver(self, event: dict[str, Any]) -> None:   # pragma: no cover - abstract
+    async def _deliver(self, event: dict[str, Any]) -> None:  # pragma: no cover - abstract
         raise NotImplementedError
 
     def _record_drop(self, event: dict[str, Any], reason: str) -> None:
-        pass   # subclasses or emitter override to bump the metric
+        pass  # subclasses or emitter override to bump the metric
 
     def _safe_record_drop(self, event: dict[str, Any], reason: str) -> None:
         """Wrap _record_drop so a buggy subclass override cannot poison the

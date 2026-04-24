@@ -1,4 +1,5 @@
 """VaultSecretStore — hvac KVv2 read, wrapped via asyncio.to_thread."""
+
 from __future__ import annotations
 
 from unittest.mock import MagicMock

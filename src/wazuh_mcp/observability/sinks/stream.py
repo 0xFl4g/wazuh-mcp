@@ -6,6 +6,7 @@ JSON-RPC frames; writing audit bytes there corrupts the wire).
 StdoutSink is opt-in and ONLY safe in HTTP-mode deployments where stdout
 isn't on the MCP wire.
 """
+
 from __future__ import annotations
 
 import json

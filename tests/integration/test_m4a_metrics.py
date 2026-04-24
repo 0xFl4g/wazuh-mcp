@@ -5,6 +5,7 @@ server. After driving a few alerts.* tool calls via a real MCP client,
 /metrics must return Prom text containing every M4a metric family so
 operators can scrape them.
 """
+
 from __future__ import annotations
 
 import httpx

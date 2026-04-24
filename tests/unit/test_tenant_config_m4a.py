@@ -1,5 +1,6 @@
 """TenantConfig extensions for M4a: secret_prefix, role_tool_allowlist,
 rate_limit, audit_sinks."""
+
 from __future__ import annotations
 
 import pytest

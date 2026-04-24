@@ -1,4 +1,5 @@
 """SqliteAgeSecretStore — real pyrage + aiosqlite roundtrip against tempdir DB."""
+
 from __future__ import annotations
 
 from pathlib import Path

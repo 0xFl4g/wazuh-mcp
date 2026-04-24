@@ -1,4 +1,5 @@
 """Verify conftest auto-skips @pytest.mark.requires_manager on arm64+darwin."""
+
 from __future__ import annotations
 
 import platform
@@ -11,13 +12,15 @@ from pathlib import Path
 def test_auto_skip_on_arm64_darwin(tmp_path: Path) -> None:
     """Emulate arm64+darwin via subprocess and assert the marker skips."""
     test_file = tmp_path / "test_sample.py"
-    test_file.write_text(textwrap.dedent("""
+    test_file.write_text(
+        textwrap.dedent("""
         import pytest
 
         @pytest.mark.requires_manager
         def test_should_skip_on_arm64_darwin():
             assert True
-    """))
+    """)
+    )
     conftest = tmp_path / "conftest.py"
     repo_conftest = Path(__file__).resolve().parents[2] / "tests" / "conftest.py"
     conftest.write_text(repo_conftest.read_text())

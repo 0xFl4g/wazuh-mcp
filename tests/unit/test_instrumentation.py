@@ -1,4 +1,5 @@
 """Auto-instrumentation wiring applies and is idempotent."""
+
 from __future__ import annotations
 
 import pytest

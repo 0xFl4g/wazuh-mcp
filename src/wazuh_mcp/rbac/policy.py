@@ -4,30 +4,33 @@ Ships three default roles. Per-tenant overrides replace the global
 default for that role. Unknown role in the effective allowlist is
 treated as deny-all at match time (see rbac/filter.py).
 """
+
 from __future__ import annotations
 
 from collections.abc import Mapping
 from types import MappingProxyType
 
-_DEFAULTS: Mapping[str, tuple[str, ...]] = MappingProxyType({
-    "admin": ("*",),
-    "analyst": (
-        "alerts.*",
-        "agents.*",
-        "vulnerabilities.*",
-        "mitre.*",
-        "hunt.*",
-        "fim.*",
-    ),
-    "readonly": (
-        "alerts.*",
-        "agents.get_agent",
-        "agents.list_agents",
-        "vulnerabilities.*",
-        "mitre.*",
-        "fim.*",
-    ),
-})
+_DEFAULTS: Mapping[str, tuple[str, ...]] = MappingProxyType(
+    {
+        "admin": ("*",),
+        "analyst": (
+            "alerts.*",
+            "agents.*",
+            "vulnerabilities.*",
+            "mitre.*",
+            "hunt.*",
+            "fim.*",
+        ),
+        "readonly": (
+            "alerts.*",
+            "agents.get_agent",
+            "agents.list_agents",
+            "vulnerabilities.*",
+            "mitre.*",
+            "fim.*",
+        ),
+    }
+)
 
 
 def _to_mutable(src: Mapping[str, tuple[str, ...]]) -> dict[str, list[str]]:

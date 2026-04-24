@@ -12,6 +12,7 @@ aren't a framed message corrupt the wire. StdoutSink exists for HTTP-mode
 deploys or operators collecting logs from stdout, but operators must
 choose it explicitly in config.
 """
+
 from __future__ import annotations
 
 import contextlib

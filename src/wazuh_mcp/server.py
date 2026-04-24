@@ -167,8 +167,7 @@ def _install_rbac_hooks(
             # unexpected pre-session list_tools in a stdio deploy still
             # leaves a signal operators can find.
             _logger.info(
-                "list_tools without session contextvar — stdio pre-session "
-                "trust-boundary allow-all"
+                "list_tools without session contextvar — stdio pre-session trust-boundary allow-all"
             )
             return all_tools
         policy = rbac_policy(session)
@@ -216,8 +215,10 @@ def build_app(cfg: AppConfig, audit: MultiSinkAuditEmitter | None = None) -> Fas
     init_otel(service_version=_service_version())
     maybe_start_stdio_metrics_server()
 
-    audit_emitter = audit or cfg.audit or MultiSinkAuditEmitter(
-        sinks=_build_sinks(cfg.tenant, indexer_pool=None)
+    audit_emitter = (
+        audit
+        or cfg.audit
+        or MultiSinkAuditEmitter(sinks=_build_sinks(cfg.tenant, indexer_pool=None))
     )
     limiter = cfg.limiter or InProcessRateLimiter(default=cfg.tenant.rate_limit)
 
@@ -673,9 +674,7 @@ def _register_everything(
         args = ListVulnerabilitiesByAgentArgs(**kwargs)
         session = current_session()
         indexer = await indexer_pool.acquire(session.tenant_id)
-        return await list_vulnerabilities_by_agent(
-            args=args, session=session, indexer=indexer
-        )
+        return await list_vulnerabilities_by_agent(args=args, session=session, indexer=indexer)
 
     _wrap(
         tool_name="vulnerabilities.list_vulnerabilities_by_agent",

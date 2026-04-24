@@ -21,6 +21,7 @@ emitted with ``outcome="error"`` and ``error_code="cancelled"`` so a
 tenant cannot burn their rate-limit budget without leaving an audit
 trail.
 """
+
 from __future__ import annotations
 
 import functools
@@ -82,9 +83,7 @@ def instrumented_tool(
             await limiter.acquire(session.tenant_id, session.user_id)
         except WazuhError as rle:
             scope = "tenant" if "tenant" in rle.message else "session"
-            counters["rate_limited_total"].add(
-                1, {"tenant": session.tenant_id, "scope": scope}
-            )
+            counters["rate_limited_total"].add(1, {"tenant": session.tenant_id, "scope": scope})
             counters["mcp_tool_calls_total"].add(
                 1,
                 {

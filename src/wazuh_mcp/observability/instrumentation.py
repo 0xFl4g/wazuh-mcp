@@ -1,6 +1,7 @@
 """Thin wrapper around OTel auto-instrumentation — keeps setup callsites
 centralised in server.py/transport/http.py and lets tests toggle it.
 """
+
 from __future__ import annotations
 
 from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor

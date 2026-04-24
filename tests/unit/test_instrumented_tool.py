@@ -1,4 +1,5 @@
 """@instrumented_tool orchestrates RBAC → rate_limit → span → handler → audit."""
+
 from __future__ import annotations
 
 import io
@@ -30,10 +31,12 @@ def _policy(session: Session) -> dict[str, list[str]]:
 
 
 def _limiter() -> InProcessRateLimiter:
-    return InProcessRateLimiter(default=RateLimitConfig(
-        tenant=BucketConfig(capacity=3, refill_per_sec=1.0),
-        session=BucketConfig(capacity=2, refill_per_sec=1.0),
-    ))
+    return InProcessRateLimiter(
+        default=RateLimitConfig(
+            tenant=BucketConfig(capacity=3, refill_per_sec=1.0),
+            session=BucketConfig(capacity=2, refill_per_sec=1.0),
+        )
+    )
 
 
 async def _handler(**kwargs: Any) -> dict[str, int]:
@@ -46,6 +49,7 @@ def _session(role: str = "analyst") -> Session:
 
 async def _drain(emitter: MultiSinkAuditEmitter) -> None:
     import asyncio
+
     await asyncio.sleep(0.05)
 
 
@@ -88,7 +92,7 @@ async def test_rbac_deny_returns_forbidden_without_handler_call() -> None:
             limiter=_limiter(),
             audit=emitter,
         )
-        token = CURRENT_SESSION.set(_session("analyst"))   # analyst not allowed hunt.*
+        token = CURRENT_SESSION.set(_session("analyst"))  # analyst not allowed hunt.*
         try:
             with pytest.raises(WazuhError) as exc:
                 await wrapped()
@@ -132,8 +136,10 @@ async def test_handler_exception_audits_error_outcome() -> None:
     emitter = MultiSinkAuditEmitter(sinks=[StderrSink(stream=out)])
     await emitter.start()
     try:
+
         async def _bad(**kw):
             raise WazuhError("upstream_error", "boom", 502)
+
         wrapped = instrumented_tool(
             tool_name="alerts.get_alert",
             handler=_bad,
@@ -160,10 +166,12 @@ async def test_rbac_deny_does_not_consume_rate_limit_token() -> None:
     emitter = MultiSinkAuditEmitter(sinks=[StderrSink(stream=io.StringIO())])
     await emitter.start()
     try:
-        limiter = InProcessRateLimiter(default=RateLimitConfig(
-            tenant=BucketConfig(capacity=1, refill_per_sec=1.0),
-            session=BucketConfig(capacity=1, refill_per_sec=1.0),
-        ))
+        limiter = InProcessRateLimiter(
+            default=RateLimitConfig(
+                tenant=BucketConfig(capacity=1, refill_per_sec=1.0),
+                session=BucketConfig(capacity=1, refill_per_sec=1.0),
+            )
+        )
         # analyst is not allowed hunt.*
         denied_wrapped = instrumented_tool(
             tool_name="hunt.hunt_query",
@@ -183,7 +191,7 @@ async def test_rbac_deny_does_not_consume_rate_limit_token() -> None:
         token = CURRENT_SESSION.set(_session("analyst"))
         try:
             with pytest.raises(WazuhError) as exc:
-                await denied_wrapped()   # forbidden — MUST NOT consume a token
+                await denied_wrapped()  # forbidden — MUST NOT consume a token
             assert exc.value.code == "forbidden"
             # If the RBAC-before-rate-limit order holds, the allowed call now succeeds.
             result = await allowed_wrapped()
@@ -203,8 +211,10 @@ async def test_handler_generic_exception_audits_internal_error() -> None:
     emitter = MultiSinkAuditEmitter(sinks=[StderrSink(stream=out)])
     await emitter.start()
     try:
+
         async def _boom(**kw):
             raise RuntimeError("unexpected")
+
         wrapped = instrumented_tool(
             tool_name="alerts.get_alert",
             handler=_boom,
@@ -238,7 +248,8 @@ async def test_cancelled_handler_still_audits() -> None:
 
         async def _slow(**kw):
             started.set()
-            await asyncio.sleep(10)   # will be cancelled
+            await asyncio.sleep(10)  # will be cancelled
+
         wrapped = instrumented_tool(
             tool_name="alerts.search_alerts",
             handler=_slow,
@@ -279,9 +290,11 @@ async def test_pydantic_validation_error_audits_parse_error() -> None:
     emitter = MultiSinkAuditEmitter(sinks=[StderrSink(stream=out)])
     await emitter.start()
     try:
+
         async def _bad(**kw):
-            _Args(**kw)   # raises ValidationError for n=non-int
+            _Args(**kw)  # raises ValidationError for n=non-int
             return {}
+
         wrapped = instrumented_tool(
             tool_name="alerts.search_alerts",
             handler=_bad,
@@ -304,9 +317,11 @@ async def test_pydantic_validation_error_audits_parse_error() -> None:
 @pytest.mark.asyncio
 async def test_functools_wraps_preserved() -> None:
     """functools.wraps preserves __wrapped__ and __doc__ for FastMCP introspection."""
+
     async def _original(**kw) -> dict:
         """Original docstring."""
         return {}
+
     emitter = MultiSinkAuditEmitter(sinks=[StderrSink(stream=io.StringIO())])
     await emitter.start()
     try:

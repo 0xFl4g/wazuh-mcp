@@ -13,6 +13,7 @@ Errors:
   - ClientError propagates for auth failures etc; callers translate to
     WazuhError.
 """
+
 from __future__ import annotations
 
 from typing import Any
@@ -52,7 +53,5 @@ class AWSSecretsManagerStore:
                     raise KeyError(name) from exc
                 raise
         if "SecretString" not in resp:
-            raise ValueError(
-                f"secret {name!r} is binary; wazuh-mcp stores only string secrets"
-            )
+            raise ValueError(f"secret {name!r} is binary; wazuh-mcp stores only string secrets")
         return SecretValue(resp["SecretString"])

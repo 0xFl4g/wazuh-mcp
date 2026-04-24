@@ -1,4 +1,5 @@
 """CachingSecretStore — TTL + single-flight + explicit invalidation."""
+
 from __future__ import annotations
 
 import asyncio
@@ -74,7 +75,7 @@ async def test_single_flight_concurrent_gets() -> None:
     cache = CachingSecretStore(inner, ttl_seconds=60)
     results = await asyncio.gather(*[cache.get("t1", "k1") for _ in range(20)])
     assert all(r.expose() == "v1" for r in results)
-    assert inner.calls == [("t1", "k1")]   # exactly one inner call despite 20 concurrent
+    assert inner.calls == [("t1", "k1")]  # exactly one inner call despite 20 concurrent
 
 
 @pytest.mark.asyncio

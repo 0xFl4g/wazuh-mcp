@@ -1,4 +1,5 @@
 """OTel bootstrap wires a TracerProvider + MeterProvider with Prom reader."""
+
 from __future__ import annotations
 
 from typing import Any, cast

@@ -1,4 +1,5 @@
 """FileSink: JSON lines + size-based rotation + keep-N."""
+
 from __future__ import annotations
 
 import json

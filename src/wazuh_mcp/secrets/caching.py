@@ -7,6 +7,7 @@ Design notes:
    gets for the same key share one inner call.
  - `clock` is injectable for tests (real code uses time.monotonic).
 """
+
 from __future__ import annotations
 
 import asyncio

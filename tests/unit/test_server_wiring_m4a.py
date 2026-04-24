@@ -116,9 +116,7 @@ async def test_rbac_list_tools_filter_allows_admin_denies_empty() -> None:
     )
     _install_rbac_hooks(mcp_app, rbac_policy=_policy_allow_admin, audit_emitter=audit)
 
-    session = Session(
-        user_id="u", tenant_id="t", rbac_role="admin", auth_method="oauth"
-    )
+    session = Session(user_id="u", tenant_id="t", rbac_role="admin", auth_method="oauth")
     token = set_current_session(session)
     try:
         # Call FastMCP's bound method directly — our wrapper on the low-
@@ -170,9 +168,7 @@ async def test_rbac_call_tool_deny_emits_forbidden_audit() -> None:
         )
         _install_rbac_hooks(mcp_app, rbac_policy=_policy_deny_all, audit_emitter=audit)
 
-        session = Session(
-            user_id="u", tenant_id="t", rbac_role="admin", auth_method="oauth"
-        )
+        session = Session(user_id="u", tenant_id="t", rbac_role="admin", auth_method="oauth")
         token = set_current_session(session)
         try:
             req = mt.CallToolRequest(

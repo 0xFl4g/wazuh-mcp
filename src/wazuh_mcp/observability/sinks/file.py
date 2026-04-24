@@ -4,6 +4,7 @@ Rotation: when the current file exceeds rotate_size_bytes, close it,
 shift existing archives (.1 -> .2, .2 -> .3, ...), move current to .1,
 and open a new current. `keep` caps the number of archives retained.
 """
+
 from __future__ import annotations
 
 import json

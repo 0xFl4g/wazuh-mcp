@@ -1,4 +1,5 @@
 """StderrSink and StdoutSink: JSON lines to a stream."""
+
 from __future__ import annotations
 
 import io

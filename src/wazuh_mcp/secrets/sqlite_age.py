@@ -9,6 +9,7 @@ Recipient list for encryption is passed into put() — typically the public
 half of the operator's identity. Multi-recipient (add your admin's public
 key) is supported by passing more than one.
 """
+
 from __future__ import annotations
 
 from pathlib import Path

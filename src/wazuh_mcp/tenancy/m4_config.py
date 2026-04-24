@@ -63,10 +63,6 @@ class WazuhIndexerSinkConfig(BaseModel):
 
 
 AuditSinkConfig = Annotated[
-    StderrSinkConfig
-    | StdoutSinkConfig
-    | FileSinkConfig
-    | HttpSinkConfig
-    | WazuhIndexerSinkConfig,
+    StderrSinkConfig | StdoutSinkConfig | FileSinkConfig | HttpSinkConfig | WazuhIndexerSinkConfig,
     Field(discriminator="kind"),
 ]

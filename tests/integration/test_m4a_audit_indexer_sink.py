@@ -6,6 +6,7 @@ an audit doc to ``wazuh-mcp-audit-YYYY.MM.DD`` in the seeded indexer;
 the test queries the indexer directly and asserts at least one doc with
 the expected tool name lands there.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -121,9 +122,7 @@ api_keys_file: {cfg_dir / "api_keys.yaml"}
 
 
 @pytest.mark.integration
-async def test_audit_events_land_in_indexer(
-    mcp_http_server_indexer_sink, keycloak_token, indexer
-):
+async def test_audit_events_land_in_indexer(mcp_http_server_indexer_sink, keycloak_token, indexer):
     """A tool call on the sink-configured tenant produces an audit doc
     searchable in today's wazuh-mcp-audit-YYYY.MM.DD index."""
     import httpx as _httpx
@@ -145,9 +144,7 @@ async def test_audit_events_land_in_indexer(
             ClientSession(read, write) as session,
         ):
             await session.initialize()
-            r = await session.call_tool(
-                "alerts.search_alerts", {"time_range": "24h", "size": 1}
-            )
+            r = await session.call_tool("alerts.search_alerts", {"time_range": "24h", "size": 1})
             assert not r.isError, f"tool call failed: {r}"
     finally:
         await http_client.aclose()
@@ -161,9 +158,7 @@ async def test_audit_events_land_in_indexer(
         query={"query": {"match_all": {}}},
     )
     hits = resp.get("hits", {}).get("hits", [])
-    assert len(hits) >= 1, (
-        f"no audit docs landed in wazuh-mcp-audit-{today}; got: {resp}"
-    )
+    assert len(hits) >= 1, f"no audit docs landed in wazuh-mcp-audit-{today}; got: {resp}"
     tools_seen = {h.get("_source", {}).get("tool") for h in hits}
     assert "alerts.search_alerts" in tools_seen, (
         f"expected alerts.search_alerts in audit docs, got tools: {tools_seen}"
