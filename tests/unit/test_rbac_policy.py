@@ -26,6 +26,19 @@ def test_readonly_excludes_hunt() -> None:
     assert "alerts.*" in pats
 
 
+def test_readonly_exact_pattern_set_pinned() -> None:
+    # Pin the complete readonly set so a refactor that silently widens it
+    # (e.g. adds agents.*) breaks a test.
+    assert set(DEFAULT_ROLE_TOOL_ALLOWLIST["readonly"]) == {
+        "alerts.*",
+        "agents.get_agent",
+        "agents.list_agents",
+        "vulnerabilities.*",
+        "mitre.*",
+        "fim.*",
+    }
+
+
 def test_effective_returns_default_when_no_override() -> None:
     result = effective_allowlist_for(tenant_override=None)
     assert result == DEFAULT_ROLE_TOOL_ALLOWLIST
@@ -57,3 +70,14 @@ def test_returned_mapping_is_copy_not_alias() -> None:
     # Calling again returns the pristine default, not the mutation.
     again = effective_allowlist_for(tenant_override=None)
     assert again["admin"] == ["*"]
+
+
+def test_nested_lists_are_deep_copied() -> None:
+    # Mutate the list within the returned mapping; the next call must return
+    # a pristine default. Locks the property against a future refactor that
+    # memoizes _to_mutable's output.
+    result = effective_allowlist_for(tenant_override=None)
+    result["admin"].append("smuggled")
+    again = effective_allowlist_for(tenant_override=None)
+    assert again["admin"] == ["*"]
+    assert "smuggled" not in again["admin"]
