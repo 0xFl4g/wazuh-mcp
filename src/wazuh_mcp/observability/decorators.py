@@ -110,6 +110,21 @@ def instrumented_tool(
             span.set_attribute("mcp.session.id", session.user_id)
             span.set_attribute("mcp.tenant.id", session.tenant_id)
             span.set_attribute("mcp.user.id", session.user_id)
+
+            # M4b: write tools emit a pre-call "requested" event so operators
+            # see intent even if the handler fails, is cancelled, or is
+            # rejected for missing confirm / allowlist. Net audit events per
+            # write call: exactly 2 (requested + completion-or-error).
+            if tool_name.startswith("write."):
+                audit.emit(
+                    session=session,
+                    tool=tool_name,
+                    args=kwargs,
+                    outcome="write.requested",
+                    result_count=0,
+                    duration_ms=0,
+                )
+
             try:
                 result = await handler(**kwargs)
             except WazuhError as e:

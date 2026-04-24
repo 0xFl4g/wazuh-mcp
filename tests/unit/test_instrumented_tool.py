@@ -336,3 +336,111 @@ async def test_functools_wraps_preserved() -> None:
         assert wrapped.__doc__ == "Original docstring."
     finally:
         await emitter.stop()
+
+
+@pytest.mark.asyncio
+async def test_write_tool_emits_requested_then_completed_audit() -> None:
+    """A write.* tool emits exactly one write.requested event BEFORE handler
+    and one completion event AFTER. Ordering assert-able via a sequential
+    sink."""
+    import asyncio
+    import io
+
+    out = io.StringIO()
+    emitter = MultiSinkAuditEmitter(sinks=[StderrSink(stream=out)])
+    await emitter.start()
+    try:
+
+        async def _handler(**kw):
+            return {"ok": True}
+
+        wrapped = instrumented_tool(
+            tool_name="write.isolate_agent",
+            handler=_handler,
+            rbac_policy=_policy,
+            limiter=_limiter(),
+            audit=emitter,
+        )
+        token = CURRENT_SESSION.set(_session("admin"))
+        try:
+            await wrapped(agent_id="003", confirm=True)
+        finally:
+            CURRENT_SESSION.reset(token)
+        await asyncio.sleep(0.05)
+    finally:
+        await emitter.stop()
+    events = [line for line in out.getvalue().splitlines() if line]
+    # Two events: requested + ok.
+    assert len(events) == 2
+    assert '"outcome": "write.requested"' in events[0]
+    assert '"tool": "write.isolate_agent"' in events[0]
+    assert '"outcome": "ok"' in events[1]
+    assert '"tool": "write.isolate_agent"' in events[1]
+
+
+@pytest.mark.asyncio
+async def test_write_tool_requested_audit_then_error_on_upstream_failure() -> None:
+    """If the handler raises, the pre-emitted requested event still lands; the
+    decorator emits the error completion. Exactly two events."""
+    import asyncio
+    import io
+
+    out = io.StringIO()
+    emitter = MultiSinkAuditEmitter(sinks=[StderrSink(stream=out)])
+    await emitter.start()
+    try:
+
+        async def _handler(**kw):
+            raise WazuhError("upstream_error", "boom", 502)
+
+        wrapped = instrumented_tool(
+            tool_name="write.restart_agent",
+            handler=_handler,
+            rbac_policy=_policy,
+            limiter=_limiter(),
+            audit=emitter,
+        )
+        token = CURRENT_SESSION.set(_session("admin"))
+        try:
+            with pytest.raises(WazuhError):
+                await wrapped(agent_id="003", confirm=True)
+        finally:
+            CURRENT_SESSION.reset(token)
+        await asyncio.sleep(0.05)
+    finally:
+        await emitter.stop()
+    events = [line for line in out.getvalue().splitlines() if line]
+    assert len(events) == 2
+    assert '"outcome": "write.requested"' in events[0]
+    assert '"outcome": "error"' in events[1]
+    assert '"error_code": "upstream_error"' in events[1]
+
+
+@pytest.mark.asyncio
+async def test_non_write_tool_emits_single_audit_as_before() -> None:
+    """Non-write tools keep the M4a single-event contract."""
+    import asyncio
+    import io
+
+    out = io.StringIO()
+    emitter = MultiSinkAuditEmitter(sinks=[StderrSink(stream=out)])
+    await emitter.start()
+    try:
+        wrapped = instrumented_tool(
+            tool_name="alerts.search_alerts",
+            handler=_handler,
+            rbac_policy=_policy,
+            limiter=_limiter(),
+            audit=emitter,
+        )
+        token = CURRENT_SESSION.set(_session("admin"))
+        try:
+            await wrapped()
+        finally:
+            CURRENT_SESSION.reset(token)
+        await asyncio.sleep(0.05)
+    finally:
+        await emitter.stop()
+    events = [line for line in out.getvalue().splitlines() if line]
+    assert len(events) == 1
+    assert '"outcome": "ok"' in events[0]
