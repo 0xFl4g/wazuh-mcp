@@ -1,3 +1,4 @@
+import asyncio
 import io
 from pathlib import Path
 
@@ -7,6 +8,7 @@ from pytest_httpx import HTTPXMock
 from wazuh_mcp.auth.config_factory import ConfigSessionFactory
 from wazuh_mcp.auth.factory import SessionFactory
 from wazuh_mcp.observability.audit import AuditEmitter
+from wazuh_mcp.observability.sinks.stream import StderrSink
 from wazuh_mcp.server import build_app, load_config
 from wazuh_mcp.transport.session_ctx import CURRENT_SESSION, set_current_session
 
@@ -63,7 +65,9 @@ async def test_registered_search_alerts_executes_against_mocked_indexer(
     )
     cfg = load_config(config_dir)
     audit_buf = io.StringIO()
-    app = build_app(cfg, audit=AuditEmitter(stream=audit_buf))
+    emitter = AuditEmitter(sinks=[StderrSink(stream=audit_buf)])
+    await emitter.start()
+    app = build_app(cfg, audit=emitter)
     tool = next(t for t in app._tool_manager.list_tools() if t.name == "alerts.search_alerts")
 
     # stdio's run_stdio() primes the session contextvar at startup; when
@@ -74,6 +78,9 @@ async def test_registered_search_alerts_executes_against_mocked_indexer(
         result = await tool.fn(time_range="1h")
     finally:
         CURRENT_SESSION.reset(token)
+    # Let the background drain task flush the enqueued event to the stream.
+    await asyncio.sleep(0.05)
+    await emitter.stop()
     assert result.total == 0
     assert result.alerts == []
     assert '"tool": "alerts.search_alerts"' in audit_buf.getvalue()

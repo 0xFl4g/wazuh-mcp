@@ -1,3 +1,4 @@
+import asyncio
 import io
 import json
 
@@ -7,6 +8,7 @@ from pytest_httpx import HTTPXMock
 
 from wazuh_mcp.auth.session import Session
 from wazuh_mcp.observability.audit import AuditEmitter
+from wazuh_mcp.observability.sinks.stream import StderrSink
 from wazuh_mcp.secrets.value import SecretValue
 from wazuh_mcp.tools.alerts import SearchAlertsArgs, search_alerts
 from wazuh_mcp.wazuh.errors import WazuhError
@@ -41,6 +43,15 @@ def _hit(alert_id: str, level: int = 10):
     }
 
 
+def _emitter(stream: io.StringIO) -> AuditEmitter:
+    return AuditEmitter(sinks=[StderrSink(stream=stream)])
+
+
+async def _drain(emitter: AuditEmitter) -> None:
+    await asyncio.sleep(0.05)
+    await emitter.stop()
+
+
 async def test_search_alerts_returns_structured_result(httpx_mock: HTTPXMock):
     httpx_mock.add_response(
         url=f"{BASE}/wazuh-alerts-*/_search",
@@ -48,7 +59,8 @@ async def test_search_alerts_returns_structured_result(httpx_mock: HTTPXMock):
         json={"hits": {"total": {"value": 2}, "hits": [_hit("a1"), _hit("a2")]}},
     )
     buf = io.StringIO()
-    emitter = AuditEmitter(stream=buf)
+    emitter = _emitter(buf)
+    await emitter.start()
     client = _client()
     try:
         result = await search_alerts(
@@ -59,6 +71,7 @@ async def test_search_alerts_returns_structured_result(httpx_mock: HTTPXMock):
         )
     finally:
         await client.aclose()
+    await _drain(emitter)
 
     assert result.total == 2
     assert len(result.alerts) == 2
@@ -78,7 +91,7 @@ async def test_search_alerts_rejects_invalid_time_range():
                 args=SearchAlertsArgs(time_range="bogus"),
                 session=_session(),
                 indexer=client,
-                audit=AuditEmitter(stream=io.StringIO()),
+                audit=_emitter(io.StringIO()),
             )
     finally:
         await client.aclose()
@@ -92,6 +105,8 @@ async def test_search_alerts_audits_on_upstream_error(httpx_mock: HTTPXMock):
         json={"error": "too many"},
     )
     buf = io.StringIO()
+    emitter = _emitter(buf)
+    await emitter.start()
     client = _client()
     try:
         with pytest.raises(WazuhError):
@@ -99,10 +114,11 @@ async def test_search_alerts_audits_on_upstream_error(httpx_mock: HTTPXMock):
                 args=SearchAlertsArgs(time_range="1h"),
                 session=_session(),
                 indexer=client,
-                audit=AuditEmitter(stream=buf),
+                audit=emitter,
             )
     finally:
         await client.aclose()
+    await _drain(emitter)
     event = json.loads(buf.getvalue().strip())
     assert event["outcome"] == "error"
     assert event["error_code"] == "rate_limited"
@@ -121,6 +137,8 @@ async def test_search_alerts_audits_parse_error(httpx_mock: HTTPXMock):
         json={"hits": {"total": {"value": 1}, "hits": [bad_hit]}},
     )
     buf = io.StringIO()
+    emitter = _emitter(buf)
+    await emitter.start()
     client = _client()
     try:
         with pytest.raises(ValidationError):
@@ -128,10 +146,11 @@ async def test_search_alerts_audits_parse_error(httpx_mock: HTTPXMock):
                 args=SearchAlertsArgs(time_range="1h"),
                 session=_session(),
                 indexer=client,
-                audit=AuditEmitter(stream=buf),
+                audit=emitter,
             )
     finally:
         await client.aclose()
+    await _drain(emitter)
     event = json.loads(buf.getvalue().strip())
     assert event["outcome"] == "error"
     assert event["error_code"] == "parse_error"
@@ -150,7 +169,7 @@ async def test_search_alerts_truncated_when_hits_equal_size(httpx_mock: HTTPXMoc
             args=SearchAlertsArgs(time_range="1h"),
             session=_session(),
             indexer=client,
-            audit=AuditEmitter(stream=io.StringIO()),
+            audit=_emitter(io.StringIO()),
         )
     finally:
         await client.aclose()

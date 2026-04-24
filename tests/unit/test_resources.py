@@ -7,6 +7,7 @@ import pytest
 
 from wazuh_mcp.auth.session import Session
 from wazuh_mcp.observability.audit import AuditEmitter
+from wazuh_mcp.observability.sinks.stream import StderrSink
 from wazuh_mcp.resources import TEMPLATES, make_json_content
 from wazuh_mcp.resources.agent_config import read_agent_config
 from wazuh_mcp.resources.mitre import read_mitre_technique
@@ -44,7 +45,7 @@ def session() -> Session:
 
 @pytest.fixture
 def audit() -> AuditEmitter:
-    return AuditEmitter(stream=io.StringIO())
+    return AuditEmitter(sinks=[StderrSink(stream=io.StringIO())])
 
 
 @pytest.fixture

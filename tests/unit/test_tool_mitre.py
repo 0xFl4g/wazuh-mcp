@@ -6,6 +6,7 @@ import pytest
 
 from wazuh_mcp.auth.session import Session
 from wazuh_mcp.observability.audit import AuditEmitter
+from wazuh_mcp.observability.sinks.stream import StderrSink
 from wazuh_mcp.secrets.value import SecretValue
 from wazuh_mcp.tools.mitre import (
     GetMitreTechniqueArgs,
@@ -45,7 +46,7 @@ def session() -> Session:
 
 @pytest.fixture
 def audit() -> AuditEmitter:
-    return AuditEmitter(stream=io.StringIO())
+    return AuditEmitter(sinks=[StderrSink(stream=io.StringIO())])
 
 
 @pytest.fixture

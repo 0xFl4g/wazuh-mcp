@@ -7,6 +7,7 @@ import io
 from mcp.server.fastmcp import FastMCP
 
 from wazuh_mcp.observability.audit import AuditEmitter
+from wazuh_mcp.observability.sinks.stream import StderrSink
 from wazuh_mcp.server import _register_everything
 
 
@@ -22,7 +23,7 @@ class _StubPool:
 
 def test_every_m3_tool_is_registered() -> None:
     mcp_app = FastMCP(name="test")
-    audit = AuditEmitter(stream=io.StringIO())
+    audit = AuditEmitter(sinks=[StderrSink(stream=io.StringIO())])
     _register_everything(
         mcp_app,
         indexer_pool=_StubPool(),
@@ -56,7 +57,7 @@ def test_every_m3_tool_is_registered() -> None:
 
 def test_every_m3_resource_template_is_registered() -> None:
     mcp_app = FastMCP(name="test")
-    audit = AuditEmitter(stream=io.StringIO())
+    audit = AuditEmitter(sinks=[StderrSink(stream=io.StringIO())])
     _register_everything(
         mcp_app,
         indexer_pool=_StubPool(),
@@ -76,7 +77,7 @@ def test_every_m3_resource_template_is_registered() -> None:
 
 def test_every_m3_prompt_is_registered() -> None:
     mcp_app = FastMCP(name="test")
-    audit = AuditEmitter(stream=io.StringIO())
+    audit = AuditEmitter(sinks=[StderrSink(stream=io.StringIO())])
     _register_everything(
         mcp_app,
         indexer_pool=_StubPool(),
@@ -92,7 +93,7 @@ def test_every_m3_prompt_is_registered() -> None:
 
 def test_all_tools_carry_toolset_meta() -> None:
     mcp_app = FastMCP(name="test")
-    audit = AuditEmitter(stream=io.StringIO())
+    audit = AuditEmitter(sinks=[StderrSink(stream=io.StringIO())])
     _register_everything(
         mcp_app,
         indexer_pool=_StubPool(),

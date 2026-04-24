@@ -1,25 +1,28 @@
-"""Audit emitter — one structured JSON event per tool call.
+"""Audit emitter — one structured JSON event per tool call, fanned out to
+pluggable sinks.
 
-M1 writes JSON lines to a stream (stderr by default). The default is stderr,
-not stdout, because under the MCP stdio transport the server's stdout is the
-JSON-RPC wire: any bytes written to stdout that aren't a framed JSON-RPC
-message corrupt the protocol and hang/kill the session. Audit events must
-therefore go to stderr (or an injected sink) so they never interleave with
-protocol frames.
+The legacy single-stream AuditEmitter is preserved under that name as an
+alias for MultiSinkAuditEmitter so existing tool handlers (which import
+from wazuh_mcp.observability.audit import AuditEmitter) keep working
+without churn.
 
-M4 swaps this for pluggable sinks (file, HTTP, back-to-Wazuh) with async
-delivery + bounded disk ring-buffer.
+Stderr is the safe default under the MCP stdio transport: the server's
+stdout carries JSON-RPC frames, and any bytes written to stdout that
+aren't a framed message corrupt the wire. StdoutSink exists for HTTP-mode
+deploys or operators collecting logs from stdout, but operators must
+choose it explicitly in config.
 """
-
 from __future__ import annotations
 
 import hashlib
 import json
-import sys
+from collections.abc import Sequence
 from datetime import UTC, datetime
-from typing import IO, Any
+from typing import Any
 
 from wazuh_mcp.auth.session import Session
+from wazuh_mcp.observability.sinks.base import AuditSink, QueuedSink
+from wazuh_mcp.observability.sinks.stream import StderrSink
 
 
 def _hash_args(args: dict[str, Any]) -> str:
@@ -27,12 +30,38 @@ def _hash_args(args: dict[str, Any]) -> str:
     return hashlib.sha256(payload).hexdigest()
 
 
-class AuditEmitter:
-    def __init__(self, stream: IO[str] | None = None) -> None:
-        # Default to stderr, not stdout: under stdio MCP transport the server's
-        # stdout carries JSON-RPC frames, and interleaving audit events on
-        # stdout would corrupt the wire protocol.
-        self._stream = stream if stream is not None else sys.stderr
+class MultiSinkAuditEmitter:
+    """Fan-out audit emitter. Each emit enqueues on every sink's async queue."""
+
+    def __init__(
+        self,
+        *,
+        sinks: Sequence[AuditSink] | None = None,
+        drop_metric: Any | None = None,
+    ) -> None:
+        _sinks: list[AuditSink] = list(sinks) if sinks else [StderrSink()]
+        self.sinks: list[AuditSink] = _sinks
+        if drop_metric is not None:
+            for s in self.sinks:
+                if isinstance(s, QueuedSink):
+                    sink_name = getattr(s, "name", s.__class__.__name__)
+
+                    def _recorder(
+                        event: dict[str, Any],
+                        reason: str,
+                        _name: str = sink_name,
+                    ) -> None:
+                        drop_metric.add(1, {"sink": _name, "reason": reason})
+
+                    s._record_drop = _recorder  # ty: ignore[invalid-assignment]
+
+    async def start(self) -> None:
+        for s in self.sinks:
+            await s.start()
+
+    async def stop(self) -> None:
+        for s in self.sinks:
+            await s.stop()
 
     def emit(
         self,
@@ -58,5 +87,9 @@ class AuditEmitter:
         }
         if error_code is not None:
             event["error_code"] = error_code
-        self._stream.write(json.dumps(event) + "\n")
-        self._stream.flush()
+        for sink in self.sinks:
+            sink.submit(event)
+
+
+# Legacy name kept for existing call sites in tools/*.
+AuditEmitter = MultiSinkAuditEmitter

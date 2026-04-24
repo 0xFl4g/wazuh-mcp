@@ -6,6 +6,7 @@ import pytest
 
 from wazuh_mcp.auth.session import Session
 from wazuh_mcp.observability.audit import AuditEmitter
+from wazuh_mcp.observability.sinks.stream import StderrSink
 from wazuh_mcp.prompts.agent_posture import handle as agent_posture_handle
 from wazuh_mcp.prompts.investigate_alert import handle as investigate_alert_handle
 from wazuh_mcp.prompts.triage_last_hour import handle as triage_handle
@@ -42,7 +43,7 @@ def session() -> Session:
 
 @pytest.fixture
 def audit() -> AuditEmitter:
-    return AuditEmitter(stream=io.StringIO())
+    return AuditEmitter(sinks=[StderrSink(stream=io.StringIO())])
 
 
 @pytest.fixture
