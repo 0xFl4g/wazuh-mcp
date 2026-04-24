@@ -1,0 +1,187 @@
+"""@instrumented_tool composes the M4a cross-cutting concerns around every
+MCP tool handler:
+
+  1. RBAC guard (forbidden if not allowed).
+  2. Rate limit acquire (rate_limited if buckets exhausted).
+  3. OpenTelemetry span (`mcp.tool.call`).
+  4. Run handler.
+  5. Audit emit on every exit path (ok / error).
+  6. Metric bumps: mcp_tool_calls_total, mcp_tool_duration_seconds.
+
+RBAC policy is recomputed per-call via a callable that takes the current
+Session (so per-tenant overrides are applied at the source of truth).
+"""
+from __future__ import annotations
+
+import inspect
+import time
+from collections.abc import Awaitable, Callable
+from typing import Any
+
+from opentelemetry import trace
+
+from wazuh_mcp.auth.session import Session
+from wazuh_mcp.observability.audit import MultiSinkAuditEmitter
+from wazuh_mcp.observability.metrics import m4_counters
+from wazuh_mcp.rate_limit.limiter import RateLimiter
+from wazuh_mcp.rbac.filter import is_allowed
+from wazuh_mcp.transport.session_ctx import current_session
+from wazuh_mcp.wazuh.errors import WazuhError
+
+
+def instrumented_tool(
+    *,
+    tool_name: str,
+    handler: Callable[..., Awaitable[Any]],
+    rbac_policy: Callable[[], dict[str, list[str]]] | Callable[[Session], dict[str, list[str]]],
+    limiter: RateLimiter,
+    audit: MultiSinkAuditEmitter,
+) -> Callable[..., Awaitable[Any]]:
+    tracer = trace.get_tracer("wazuh_mcp")
+    counters = m4_counters()
+
+    async def wrapped(**kwargs: Any) -> Any:
+        session = current_session()
+
+        # 1. RBAC — rbac_policy may be a zero-arg or session-aware callable.
+        _policy_fn: Any = rbac_policy
+        if len(inspect.signature(_policy_fn).parameters) >= 1:
+            policy = _policy_fn(session)  # ty: ignore[too-many-positional-arguments]
+        else:
+            policy = _policy_fn()  # ty: ignore[missing-argument]
+        if not is_allowed(session, tool_name, policy):
+            err = WazuhError(
+                "forbidden",
+                f"{tool_name} not permitted for role {session.rbac_role!r}",
+                403,
+            )
+            audit.emit(
+                session=session,
+                tool=tool_name,
+                args=kwargs,
+                outcome="error",
+                result_count=0,
+                duration_ms=0,
+                error_code="forbidden",
+            )
+            counters["mcp_tool_calls_total"].add(
+                1,
+                {"tenant": session.tenant_id, "tool": tool_name, "outcome": "forbidden"},
+            )
+            raise err
+
+        # 2. Rate limit
+        try:
+            await limiter.acquire(session.tenant_id, session.user_id)
+        except WazuhError as rle:
+            scope = "tenant" if "tenant" in rle.message else "session"
+            counters["rate_limited_total"].add(
+                1, {"tenant": session.tenant_id, "scope": scope}
+            )
+            counters["mcp_tool_calls_total"].add(
+                1,
+                {
+                    "tenant": session.tenant_id,
+                    "tool": tool_name,
+                    "outcome": "rate_limited",
+                },
+            )
+            audit.emit(
+                session=session,
+                tool=tool_name,
+                args=kwargs,
+                outcome="error",
+                result_count=0,
+                duration_ms=0,
+                error_code="rate_limited",
+            )
+            raise
+
+        # 3. Span + 4. handler + 5. audit + 6. metrics
+        start = time.perf_counter()
+        with tracer.start_as_current_span("mcp.tool.call") as span:
+            span.set_attribute("mcp.tool.name", tool_name)
+            span.set_attribute("mcp.session.id", session.user_id)
+            span.set_attribute("mcp.tenant.id", session.tenant_id)
+            span.set_attribute("mcp.user.id", session.user_id)
+            try:
+                result = await handler(**kwargs)
+            except WazuhError as e:
+                elapsed = time.perf_counter() - start
+                span.set_attribute("mcp.outcome", e.code)
+                counters["mcp_tool_calls_total"].add(
+                    1,
+                    {
+                        "tenant": session.tenant_id,
+                        "tool": tool_name,
+                        "outcome": e.code,
+                    },
+                )
+                counters["mcp_tool_duration_seconds"].record(
+                    elapsed,
+                    {"tenant": session.tenant_id, "tool": tool_name},
+                )
+                audit.emit(
+                    session=session,
+                    tool=tool_name,
+                    args=kwargs,
+                    outcome="error",
+                    result_count=0,
+                    duration_ms=int(elapsed * 1000),
+                    error_code=e.code,
+                )
+                raise
+            except Exception:
+                elapsed = time.perf_counter() - start
+                span.set_attribute("mcp.outcome", "error")
+                counters["mcp_tool_calls_total"].add(
+                    1,
+                    {
+                        "tenant": session.tenant_id,
+                        "tool": tool_name,
+                        "outcome": "error",
+                    },
+                )
+                counters["mcp_tool_duration_seconds"].record(
+                    elapsed,
+                    {"tenant": session.tenant_id, "tool": tool_name},
+                )
+                audit.emit(
+                    session=session,
+                    tool=tool_name,
+                    args=kwargs,
+                    outcome="error",
+                    result_count=0,
+                    duration_ms=int(elapsed * 1000),
+                    error_code="internal",
+                )
+                raise
+            elapsed = time.perf_counter() - start
+            span.set_attribute("mcp.outcome", "ok")
+            counters["mcp_tool_calls_total"].add(
+                1,
+                {"tenant": session.tenant_id, "tool": tool_name, "outcome": "ok"},
+            )
+            counters["mcp_tool_duration_seconds"].record(
+                elapsed,
+                {"tenant": session.tenant_id, "tool": tool_name},
+            )
+            # Best-effort result_count discovery from Pydantic results.
+            count = 0
+            for attr in ("alerts", "agents", "items", "results"):
+                val = getattr(result, attr, None)
+                if isinstance(val, list):
+                    count = len(val)
+                    break
+            audit.emit(
+                session=session,
+                tool=tool_name,
+                args=kwargs,
+                outcome="ok",
+                result_count=count,
+                duration_ms=int(elapsed * 1000),
+            )
+            return result
+
+    wrapped.__name__ = f"instrumented_{tool_name.replace('.', '_')}"
+    return wrapped
