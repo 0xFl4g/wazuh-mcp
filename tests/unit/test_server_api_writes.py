@@ -99,9 +99,7 @@ async def test_remove_agent_from_group_deletes(client, httpx_mock) -> None:
         method="DELETE",
         json={"data": {"affected_items": ["003"]}},
     )
-    resp = await client.remove_agent_from_group(
-        agent_id="003", group_id="linux", run_as="alice"
-    )
+    resp = await client.remove_agent_from_group(agent_id="003", group_id="linux", run_as="alice")
     assert "data" in resp
 
 
@@ -119,9 +117,7 @@ async def test_upload_rule_file_puts_raw_xml(client, httpx_mock) -> None:
         b'<group name="test"><rule id="100100" level="5">'
         b"<description>d</description></rule></group>"
     )
-    resp = await client.upload_rule_file(
-        filename="wazuh-mcp-100100.xml", xml=xml, run_as="alice"
-    )
+    resp = await client.upload_rule_file(filename="wazuh-mcp-100100.xml", xml=xml, run_as="alice")
     assert "data" in resp
     rule_upload_requests = [
         r

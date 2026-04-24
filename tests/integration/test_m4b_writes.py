@@ -316,9 +316,7 @@ async def test_run_active_response_rejected_when_command_not_allowlisted(
 
 
 async def test_confirm_missing_rejected_at_args_parse(mcp_http_client_with_writes) -> None:
-    result = await mcp_http_client_with_writes.call_tool(
-        "write.isolate_agent", {"agent_id": "001"}
-    )
+    result = await mcp_http_client_with_writes.call_tool("write.isolate_agent", {"agent_id": "001"})
     assert result.isError
 
 

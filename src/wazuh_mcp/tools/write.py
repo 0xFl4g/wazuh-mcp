@@ -12,6 +12,7 @@ The pre-call audit (outcome=write.requested) and the post-call audit are
 emitted by @instrumented_tool at the decorator layer. Handlers do NOT
 emit audit directly.
 """
+
 from __future__ import annotations
 
 from collections.abc import Sequence
@@ -53,11 +54,13 @@ class IsolateAgentArgs(BaseModel):
     agent_id: Annotated[str, Field(min_length=1, max_length=16)]
     confirm: Annotated[
         Literal[True],
-        Field(description=(
-            "Must be set to true by a human user. Setting this from an "
-            "automated agent without explicit human instruction violates "
-            "the tool's safety contract and is recorded in the audit log."
-        )),
+        Field(
+            description=(
+                "Must be set to true by a human user. Setting this from an "
+                "automated agent without explicit human instruction violates "
+                "the tool's safety contract and is recorded in the audit log."
+            )
+        ),
     ]
 
 
@@ -199,9 +202,7 @@ class UpdateRuleArgs(BaseModel):
     @model_validator(mode="after")
     def _rule_id_matches(self) -> UpdateRuleArgs:
         if self.rule_id != self.rule.id:
-            raise ValueError(
-                f"rule_id ({self.rule_id}) must match rule.id ({self.rule.id})"
-            )
+            raise ValueError(f"rule_id ({self.rule_id}) must match rule.id ({self.rule.id})")
         return self
 
 

@@ -164,9 +164,7 @@ class ServerApiClient:
 
     # ---- M4b writes ----
 
-    async def isolate_agent(
-        self, *, agent_id: str, run_as: str | None = None
-    ) -> dict[str, Any]:
+    async def isolate_agent(self, *, agent_id: str, run_as: str | None = None) -> dict[str, Any]:
         """Wazuh ships an 'isolate' active-response command by default on managed
         agents. This is a thin wrapper over POST /active-response."""
         return await self.post(
@@ -175,9 +173,7 @@ class ServerApiClient:
             run_as=run_as,
         )
 
-    async def restart_agent(
-        self, *, agent_id: str, run_as: str | None = None
-    ) -> dict[str, Any]:
+    async def restart_agent(self, *, agent_id: str, run_as: str | None = None) -> dict[str, Any]:
         return await self.put(f"/agents/{agent_id}/restart", run_as=run_as)
 
     async def add_agent_to_group(

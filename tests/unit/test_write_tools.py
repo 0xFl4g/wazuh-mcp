@@ -1,4 +1,5 @@
 """M4b write tool handlers — confirm/RBAC/allowlist/run_as contracts."""
+
 from __future__ import annotations
 
 from unittest.mock import AsyncMock
@@ -44,7 +45,9 @@ def server_api():
     api.restart_agent = AsyncMock(return_value={"data": {"affected_items": ["003"]}})
     api.add_agent_to_group = AsyncMock(return_value={"data": {"affected_items": ["003"]}})
     api.remove_agent_from_group = AsyncMock(return_value={"data": {"affected_items": ["003"]}})
-    api.upload_rule_file = AsyncMock(return_value={"data": {"affected_items": ["wazuh-mcp-100100.xml"]}})
+    api.upload_rule_file = AsyncMock(
+        return_value={"data": {"affected_items": ["wazuh-mcp-100100.xml"]}}
+    )
     api.run_active_response = AsyncMock(return_value={"data": {"affected_items": ["003"]}})
     return api
 
@@ -118,7 +121,9 @@ async def test_run_active_response_rejects_command_not_in_allowlist(server_api) 
     )
     with pytest.raises(WazuhError) as exc:
         await run_active_response(
-            args=args, session=_session(), server_api=server_api,
+            args=args,
+            session=_session(),
+            server_api=server_api,
             ar_allowlist=["block-ip", "disable-account"],
         )
     assert exc.value.code == "forbidden"
@@ -130,12 +135,17 @@ async def test_run_active_response_allows_command_in_allowlist(server_api) -> No
         agent_id="003", command_name="block-ip", custom_args={"srcip": "10.0.0.1"}, confirm=True
     )
     result = await run_active_response(
-        args=args, session=_session(), server_api=server_api,
+        args=args,
+        session=_session(),
+        server_api=server_api,
         ar_allowlist=["block-ip", "disable-account"],
     )
     assert result.ok is True
     server_api.run_active_response.assert_awaited_once_with(
-        agent_id="003", command="block-ip", custom_args={"srcip": "10.0.0.1"}, run_as="alice",
+        agent_id="003",
+        command="block-ip",
+        custom_args={"srcip": "10.0.0.1"},
+        run_as="alice",
     )
 
 

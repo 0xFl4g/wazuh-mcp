@@ -1,5 +1,6 @@
 """Hypothesis fuzz: no generated RuleDefinition produces malformed XML or
 XML with injected sibling elements."""
+
 from __future__ import annotations
 
 import xml.etree.ElementTree as ET

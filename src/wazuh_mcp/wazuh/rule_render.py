@@ -6,6 +6,7 @@ escapes every user-controlled string via xml.sax.saxutils.escape so no
 tool call can inject sibling elements or disable detection via
 `<ignore>*</ignore>` tricks.
 """
+
 from __future__ import annotations
 
 import re
@@ -25,17 +26,14 @@ _CUSTOM_RULE_ID_MAX = 999_999
 # \x0E..\x1F) cannot appear in an XML 1.0 document even via numeric character
 # reference. Reject at validation so no user-controlled string can produce
 # malformed XML downstream.
-_XML_ILLEGAL_CHARS = re.compile(
-    "[\x00-\x08\x0b\x0c\x0e-\x1f\ud800-\udfff￾￿]"
-)
+_XML_ILLEGAL_CHARS = re.compile("[\x00-\x08\x0b\x0c\x0e-\x1f\ud800-\udfff￾￿]")
 
 
 def _reject_xml_illegal(v: str) -> str:
     m = _XML_ILLEGAL_CHARS.search(v)
     if m is not None:
         raise ValueError(
-            f"value contains character U+{ord(m.group(0)):04X} that is not "
-            "valid in XML 1.0"
+            f"value contains character U+{ord(m.group(0)):04X} that is not valid in XML 1.0"
         )
     return v
 
@@ -73,8 +71,8 @@ class RuleDefinition(BaseModel):
     def _check_xml_legal_chars(self) -> RuleDefinition:
         """Reject any string field containing an XML 1.0 illegal character.
 
-        XML 1.0 forbids most C0 control characters (\x00..\x08, \x0B, \x0C,
-        \x0E..\x1F), unpaired surrogates, and the non-characters U+FFFE /
+        XML 1.0 forbids most C0 control characters (\x00..\x08, \x0b, \x0c,
+        \x0e..\x1f), unpaired surrogates, and the non-characters U+FFFE /
         U+FFFF even via numeric character reference. We reject here so the
         renderer never produces output that a strict XML parser rejects.
         """
@@ -97,9 +95,7 @@ class RuleDefinition(BaseModel):
             for g in self.groups:
                 _reject_xml_illegal(g)
                 if "," in g:
-                    raise ValueError(
-                        "group names must not contain ',' (Wazuh separator)"
-                    )
+                    raise ValueError("group names must not contain ',' (Wazuh separator)")
         return self
 
 
@@ -118,8 +114,7 @@ def render_rule_xml(rule: RuleDefinition) -> str:
     Every user-controlled string is XML-escaped. Never accepts raw XML.
     """
     parts: list[str] = [
-        f"<rule id={_xml_quoteattr(str(rule.id))} "
-        f"level={_xml_quoteattr(str(rule.level))}>"
+        f"<rule id={_xml_quoteattr(str(rule.id))} level={_xml_quoteattr(str(rule.level))}>"
     ]
     # Description is required.
     parts.append(_el("description", rule.description))

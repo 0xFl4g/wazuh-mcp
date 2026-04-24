@@ -1,4 +1,5 @@
 """RuleDefinition model + render_rule_xml pure function."""
+
 from __future__ import annotations
 
 import xml.etree.ElementTree as ET
@@ -60,9 +61,7 @@ def test_rule_with_groups() -> None:
 
 
 def test_rule_with_field_dict() -> None:
-    r = RuleDefinition(
-        id=100_600, level=4, description="d", field={"user.name": "^root$"}
-    )
+    r = RuleDefinition(id=100_600, level=4, description="d", field={"user.name": "^root$"})
     x = render_rule_xml(r)
     root = _parse(x)
     fields = root.findall("field")
@@ -77,7 +76,7 @@ def test_xml_escapes_user_strings_match() -> None:
         id=100_700,
         level=3,
         description="alert for <script>alert(1)</script> & friends",
-        match="password=\"hunter2\"",
+        match='password="hunter2"',
     )
     x = render_rule_xml(r)
     # The output must parse cleanly and contain escaped entities, not literal markup.
@@ -93,7 +92,7 @@ def test_xml_has_no_sibling_elements_outside_rule() -> None:
     r = RuleDefinition(
         id=100_800,
         level=3,
-        description="</rule><rule id=\"999999\" level=\"15\"><match>x",
+        description='</rule><rule id="999999" level="15"><match>x',
     )
     x = render_rule_xml(r)
     # Wrap in a root so ElementTree can parse multiple top-level elements.
