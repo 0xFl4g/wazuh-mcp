@@ -25,7 +25,7 @@ def _otel():
     shutdown_otel()
 
 
-def _policy(session=None) -> dict[str, list[str]]:
+def _policy(session: Session) -> dict[str, list[str]]:
     return {"analyst": ["alerts.*"], "admin": ["*"]}
 
 
@@ -152,3 +152,133 @@ async def test_handler_exception_audits_error_outcome() -> None:
         await emitter.stop()
     assert '"outcome": "error"' in out.getvalue()
     assert '"error_code": "upstream_error"' in out.getvalue()
+
+
+@pytest.mark.asyncio
+async def test_rbac_deny_does_not_consume_rate_limit_token() -> None:
+    """Regression guard: a denied call must not consume a rate-limit token."""
+    emitter = MultiSinkAuditEmitter(sinks=[StderrSink(stream=io.StringIO())])
+    await emitter.start()
+    try:
+        limiter = InProcessRateLimiter(default=RateLimitConfig(
+            tenant=BucketConfig(capacity=1, refill_per_sec=1.0),
+            session=BucketConfig(capacity=1, refill_per_sec=1.0),
+        ))
+        # analyst is not allowed hunt.*
+        denied_wrapped = instrumented_tool(
+            tool_name="hunt.hunt_query",
+            handler=_handler,
+            rbac_policy=_policy,
+            limiter=limiter,
+            audit=emitter,
+        )
+        # analyst IS allowed alerts.*
+        allowed_wrapped = instrumented_tool(
+            tool_name="alerts.search_alerts",
+            handler=_handler,
+            rbac_policy=_policy,
+            limiter=limiter,
+            audit=emitter,
+        )
+        token = CURRENT_SESSION.set(_session("analyst"))
+        try:
+            with pytest.raises(WazuhError) as exc:
+                await denied_wrapped()   # forbidden — MUST NOT consume a token
+            assert exc.value.code == "forbidden"
+            # If the RBAC-before-rate-limit order holds, the allowed call now succeeds.
+            result = await allowed_wrapped()
+            assert result == {"count": 1}
+        finally:
+            CURRENT_SESSION.reset(token)
+    finally:
+        await emitter.stop()
+
+
+@pytest.mark.asyncio
+async def test_handler_generic_exception_audits_internal_error() -> None:
+    """Non-WazuhError exceptions bubble out as outcome=error, error_code=internal."""
+    import asyncio
+
+    out = io.StringIO()
+    emitter = MultiSinkAuditEmitter(sinks=[StderrSink(stream=out)])
+    await emitter.start()
+    try:
+        async def _boom(**kw):
+            raise RuntimeError("unexpected")
+        wrapped = instrumented_tool(
+            tool_name="alerts.get_alert",
+            handler=_boom,
+            rbac_policy=_policy,
+            limiter=_limiter(),
+            audit=emitter,
+        )
+        token = CURRENT_SESSION.set(_session("admin"))
+        try:
+            with pytest.raises(RuntimeError):
+                await wrapped()
+        finally:
+            CURRENT_SESSION.reset(token)
+        await asyncio.sleep(0.05)
+    finally:
+        await emitter.stop()
+    assert '"outcome": "error"' in out.getvalue()
+    assert '"error_code": "internal"' in out.getvalue()
+
+
+@pytest.mark.asyncio
+async def test_cancelled_handler_still_audits() -> None:
+    """Cancelled-in-flight handler emits audit with error_code=cancelled."""
+    import asyncio
+
+    out = io.StringIO()
+    emitter = MultiSinkAuditEmitter(sinks=[StderrSink(stream=out)])
+    await emitter.start()
+    try:
+        started = asyncio.Event()
+
+        async def _slow(**kw):
+            started.set()
+            await asyncio.sleep(10)   # will be cancelled
+        wrapped = instrumented_tool(
+            tool_name="alerts.search_alerts",
+            handler=_slow,
+            rbac_policy=_policy,
+            limiter=_limiter(),
+            audit=emitter,
+        )
+        token = CURRENT_SESSION.set(_session("admin"))
+        try:
+            task = asyncio.create_task(wrapped())
+            await started.wait()
+            task.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await task
+        finally:
+            CURRENT_SESSION.reset(token)
+        await asyncio.sleep(0.05)
+    finally:
+        await emitter.stop()
+    output = out.getvalue()
+    assert '"error_code": "cancelled"' in output
+
+
+@pytest.mark.asyncio
+async def test_functools_wraps_preserved() -> None:
+    """functools.wraps preserves __wrapped__ and __doc__ for FastMCP introspection."""
+    async def _original(**kw) -> dict:
+        """Original docstring."""
+        return {}
+    emitter = MultiSinkAuditEmitter(sinks=[StderrSink(stream=io.StringIO())])
+    await emitter.start()
+    try:
+        wrapped = instrumented_tool(
+            tool_name="alerts.search_alerts",
+            handler=_original,
+            rbac_policy=_policy,
+            limiter=_limiter(),
+            audit=emitter,
+        )
+        assert wrapped.__wrapped__ is _original  # ty: ignore[unresolved-attribute]
+        assert wrapped.__doc__ == "Original docstring."
+    finally:
+        await emitter.stop()

@@ -5,15 +5,25 @@ MCP tool handler:
   2. Rate limit acquire (rate_limited if buckets exhausted).
   3. OpenTelemetry span (`mcp.tool.call`).
   4. Run handler.
-  5. Audit emit on every exit path (ok / error).
+  5. Audit emit on every exit path (ok / error / cancelled).
   6. Metric bumps: mcp_tool_calls_total, mcp_tool_duration_seconds.
 
 RBAC policy is recomputed per-call via a callable that takes the current
-Session (so per-tenant overrides are applied at the source of truth).
+Session (so per-tenant overrides are applied at the source of truth); the
+callable MUST accept a single Session argument.
+
+Outcome vocabulary: the spec lists ``ok``, ``error``, ``rate_limited``,
+``forbidden``, ``auth_expired``, ``not_found``, ``upstream_error``,
+``upstream_timeout``, ``invalid_query``. This decorator also uses
+``cancelled`` as an operational outcome when the handler is cancelled
+mid-flight (e.g. starlette/HTTP client abort) — the audit is still
+emitted with ``outcome="error"`` and ``error_code="cancelled"`` so a
+tenant cannot burn their rate-limit budget without leaving an audit
+trail.
 """
 from __future__ import annotations
 
-import inspect
+import functools
 import time
 from collections.abc import Awaitable, Callable
 from typing import Any
@@ -33,22 +43,18 @@ def instrumented_tool(
     *,
     tool_name: str,
     handler: Callable[..., Awaitable[Any]],
-    rbac_policy: Callable[[], dict[str, list[str]]] | Callable[[Session], dict[str, list[str]]],
+    rbac_policy: Callable[[Session], dict[str, list[str]]],
     limiter: RateLimiter,
     audit: MultiSinkAuditEmitter,
 ) -> Callable[..., Awaitable[Any]]:
     tracer = trace.get_tracer("wazuh_mcp")
     counters = m4_counters()
 
-    async def wrapped(**kwargs: Any) -> Any:
+    async def _inner(**kwargs: Any) -> Any:
         session = current_session()
 
-        # 1. RBAC — rbac_policy may be a zero-arg or session-aware callable.
-        _policy_fn: Any = rbac_policy
-        if len(inspect.signature(_policy_fn).parameters) >= 1:
-            policy = _policy_fn(session)  # ty: ignore[too-many-positional-arguments]
-        else:
-            policy = _policy_fn()  # ty: ignore[missing-argument]
+        # 1. RBAC — rbac_policy is always session-aware (explicit contract).
+        policy = rbac_policy(session)
         if not is_allowed(session, tool_name, policy):
             err = WazuhError(
                 "forbidden",
@@ -156,32 +162,68 @@ def instrumented_tool(
                     error_code="internal",
                 )
                 raise
-            elapsed = time.perf_counter() - start
-            span.set_attribute("mcp.outcome", "ok")
-            counters["mcp_tool_calls_total"].add(
-                1,
-                {"tenant": session.tenant_id, "tool": tool_name, "outcome": "ok"},
-            )
-            counters["mcp_tool_duration_seconds"].record(
-                elapsed,
-                {"tenant": session.tenant_id, "tool": tool_name},
-            )
-            # Best-effort result_count discovery from Pydantic results.
-            count = 0
-            for attr in ("alerts", "agents", "items", "results"):
-                val = getattr(result, attr, None)
-                if isinstance(val, list):
-                    count = len(val)
-                    break
-            audit.emit(
-                session=session,
-                tool=tool_name,
-                args=kwargs,
-                outcome="ok",
-                result_count=count,
-                duration_ms=int(elapsed * 1000),
-            )
-            return result
+            except BaseException:
+                # Cancellation / SystemExit / KeyboardInterrupt — must NOT
+                # swallow, but the rate-limit token was already consumed so
+                # we owe an audit + metric bump before the exception
+                # propagates. Keeps the "never lose an audit for a call we
+                # charged for" invariant.
+                elapsed = time.perf_counter() - start
+                span.set_attribute("mcp.outcome", "cancelled")
+                counters["mcp_tool_calls_total"].add(
+                    1,
+                    {
+                        "tenant": session.tenant_id,
+                        "tool": tool_name,
+                        "outcome": "cancelled",
+                    },
+                )
+                counters["mcp_tool_duration_seconds"].record(
+                    elapsed,
+                    {"tenant": session.tenant_id, "tool": tool_name},
+                )
+                audit.emit(
+                    session=session,
+                    tool=tool_name,
+                    args=kwargs,
+                    outcome="error",
+                    result_count=0,
+                    duration_ms=int(elapsed * 1000),
+                    error_code="cancelled",
+                )
+                raise
+            else:
+                elapsed = time.perf_counter() - start
+                span.set_attribute("mcp.outcome", "ok")
+                counters["mcp_tool_calls_total"].add(
+                    1,
+                    {"tenant": session.tenant_id, "tool": tool_name, "outcome": "ok"},
+                )
+                counters["mcp_tool_duration_seconds"].record(
+                    elapsed,
+                    {"tenant": session.tenant_id, "tool": tool_name},
+                )
+                # Best-effort result_count discovery from Pydantic results.
+                count = 0
+                for attr in ("alerts", "agents", "items", "results"):
+                    val = getattr(result, attr, None)
+                    if isinstance(val, list):
+                        count = len(val)
+                        break
+                audit.emit(
+                    session=session,
+                    tool=tool_name,
+                    args=kwargs,
+                    outcome="ok",
+                    result_count=count,
+                    duration_ms=int(elapsed * 1000),
+                )
+                return result
 
+    # functools.wraps preserves __wrapped__, __doc__, __annotations__, and
+    # __qualname__ so FastMCP's schema introspection in T25 can walk back
+    # to the original handler. A distinct __name__ is then restored for
+    # audit/diagnostic clarity.
+    wrapped = functools.wraps(handler)(_inner)
     wrapped.__name__ = f"instrumented_{tool_name.replace('.', '_')}"
     return wrapped
