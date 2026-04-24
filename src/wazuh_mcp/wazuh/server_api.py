@@ -94,6 +94,133 @@ class ServerApiClient:
     ) -> dict[str, Any]:
         return await self._request("POST", path, json=json, params=params, run_as=run_as)
 
+    async def put(
+        self,
+        path: str,
+        *,
+        json: dict[str, Any] | None = None,
+        params: dict[str, Any] | None = None,
+        run_as: str | None = None,
+    ) -> dict[str, Any]:
+        return await self._request("PUT", path, json=json, params=params, run_as=run_as)
+
+    async def delete(
+        self,
+        path: str,
+        *,
+        params: dict[str, Any] | None = None,
+        run_as: str | None = None,
+    ) -> dict[str, Any]:
+        return await self._request("DELETE", path, params=params, run_as=run_as)
+
+    async def put_raw(
+        self,
+        path: str,
+        *,
+        content: bytes,
+        content_type: str,
+        params: dict[str, Any] | None = None,
+        run_as: str | None = None,
+    ) -> dict[str, Any]:
+        """PUT a raw body (e.g. XML for rule-file upload). Distinct from put()
+        because httpx encodes json=..., but we need content=... here.
+
+        Shares the 401-retry + error-mapping pathway with _request by
+        delegating through it after pre-building the request with a custom
+        body and Content-Type header override.
+        """
+        token = await self._ensure_jwt()
+        effective_params = dict(params or {})
+        if run_as is not None:
+            effective_params["run_as"] = run_as
+
+        def _do(jwt: str) -> httpx.Request:
+            return self._client.build_request(
+                "PUT",
+                path,
+                params=effective_params or None,
+                content=content,
+                headers={
+                    "Authorization": f"Bearer {jwt}",
+                    "Content-Type": content_type,
+                },
+            )
+
+        try:
+            resp = await self._client.send(_do(token))
+        except httpx.TimeoutException as e:
+            raise map_timeout() from e
+
+        if resp.status_code == 401:
+            token = await self._refresh_jwt_force()
+            try:
+                resp = await self._client.send(_do(token))
+            except httpx.TimeoutException as e:
+                raise map_timeout() from e
+
+        if resp.status_code >= 400:
+            raise map_http_error(resp)
+        return resp.json()
+
+    # ---- M4b writes ----
+
+    async def isolate_agent(
+        self, *, agent_id: str, run_as: str | None = None
+    ) -> dict[str, Any]:
+        """Wazuh ships an 'isolate' active-response command by default on managed
+        agents. This is a thin wrapper over POST /active-response."""
+        return await self.post(
+            "/active-response",
+            json={"command": "isolate", "agents": [agent_id]},
+            run_as=run_as,
+        )
+
+    async def restart_agent(
+        self, *, agent_id: str, run_as: str | None = None
+    ) -> dict[str, Any]:
+        return await self.put(f"/agents/{agent_id}/restart", run_as=run_as)
+
+    async def add_agent_to_group(
+        self, *, agent_id: str, group_id: str, run_as: str | None = None
+    ) -> dict[str, Any]:
+        return await self.put(f"/agents/{agent_id}/group/{group_id}", run_as=run_as)
+
+    async def remove_agent_from_group(
+        self, *, agent_id: str, group_id: str, run_as: str | None = None
+    ) -> dict[str, Any]:
+        return await self.delete(f"/agents/{agent_id}/group/{group_id}", run_as=run_as)
+
+    async def upload_rule_file(
+        self, *, filename: str, xml: bytes, run_as: str | None = None
+    ) -> dict[str, Any]:
+        """Upload a per-rule XML file. The manager must be restarted out-of-band
+        for the ruleset to reload.
+
+        Wazuh's rule-file endpoint accepts application/xml with overwrite=true
+        as a query-string flag.
+        """
+        return await self.put_raw(
+            f"/manager/files/rules/{filename}",
+            content=xml,
+            content_type="application/xml",
+            params={"overwrite": "true"},
+            run_as=run_as,
+        )
+
+    async def run_active_response(
+        self,
+        *,
+        agent_id: str,
+        command: str,
+        custom_args: dict[str, Any] | None = None,
+        run_as: str | None = None,
+    ) -> dict[str, Any]:
+        body: dict[str, Any] = {"command": command, "agents": [agent_id]}
+        if custom_args:
+            # Wazuh expects custom fields as top-level keys in the body.
+            body.update(custom_args)
+        return await self.post("/active-response", json=body, run_as=run_as)
+
     # ---- Internal ----
 
     async def _request(
