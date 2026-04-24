@@ -38,3 +38,11 @@ def test_wazuh_error_repr_scrubs_message():
     err = WazuhError("not_found", "agent 999 missing", 404)
     # repr must not include the message (which could carry IDs or arbitrary upstream text).
     assert "agent 999" not in repr(err)
+
+
+def test_confirm_required_is_safe_code() -> None:
+    """confirm_required is a client-visible WazuhError code; Claude pattern-
+    matches on it to re-prompt the human."""
+    err = WazuhError("confirm_required", "human confirmation required", 403)
+    assert err.code == "confirm_required"
+    assert err.status_code == 403

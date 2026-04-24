@@ -19,6 +19,7 @@ SAFE_CODES: Final[frozenset[str]] = frozenset(
         "upstream_error",
         "not_found",
         "upstream_timeout",
+        "confirm_required",
     }
 )
 
