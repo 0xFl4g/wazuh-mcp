@@ -66,3 +66,33 @@ AuditSinkConfig = Annotated[
     StderrSinkConfig | StdoutSinkConfig | FileSinkConfig | HttpSinkConfig | WazuhIndexerSinkConfig,
     Field(discriminator="kind"),
 ]
+
+
+# M4b additions ------------------------------------------------------------
+
+_WRITE_TOOL_NAMES: set[str] = {
+    "write.isolate_agent",
+    "write.restart_agent",
+    "write.add_agent_to_group",
+    "write.remove_agent_from_group",
+    "write.create_rule",
+    "write.update_rule",
+    "write.run_active_response",
+}
+
+
+def _validate_write_allowlist_entry(name: str) -> str:
+    if not name.startswith("write."):
+        raise ValueError(f"write_allowlist entries must be under write.* namespace; got {name!r}")
+    if name not in _WRITE_TOOL_NAMES:
+        raise ValueError(
+            f"write_allowlist entry {name!r} is not a known write tool. "
+            f"Valid names: {sorted(_WRITE_TOOL_NAMES)}"
+        )
+    return name
+
+
+def _validate_ar_command_name(name: str) -> str:
+    if not name or not name.strip():
+        raise ValueError("active_response_allowlist command names must be non-empty")
+    return name

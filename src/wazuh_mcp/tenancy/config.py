@@ -9,7 +9,7 @@ import re
 from pathlib import Path
 from typing import Annotated
 
-from pydantic import BaseModel, ConfigDict, Field, HttpUrl
+from pydantic import BaseModel, ConfigDict, Field, HttpUrl, field_validator
 
 from wazuh_mcp.tenancy.m4_config import (
     AuditSinkConfig,
@@ -40,3 +40,24 @@ class TenantConfig(BaseModel):
     role_tool_allowlist: dict[str, list[str]] | None = None
     rate_limit: RateLimitConfig = RateLimitConfig()
     audit_sinks: list[AuditSinkConfig] = Field(default_factory=list)
+
+    # M4b additions. write_allowlist: None -> no filter (all writes register).
+    # Empty list -> NO writes register. List -> only those names register.
+    write_allowlist: list[str] | None = None
+    active_response_allowlist: list[str] = Field(default_factory=list)
+
+    @field_validator("write_allowlist")
+    @classmethod
+    def _validate_writes(cls, v: list[str] | None) -> list[str] | None:
+        if v is None:
+            return v
+        from wazuh_mcp.tenancy.m4_config import _validate_write_allowlist_entry
+
+        return [_validate_write_allowlist_entry(name) for name in v]
+
+    @field_validator("active_response_allowlist")
+    @classmethod
+    def _validate_ar(cls, v: list[str]) -> list[str]:
+        from wazuh_mcp.tenancy.m4_config import _validate_ar_command_name
+
+        return [_validate_ar_command_name(name) for name in v]
