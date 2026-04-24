@@ -11,3 +11,4 @@ build/
 htmlcov/
 .coverage
 *.log
+.DS_Store
