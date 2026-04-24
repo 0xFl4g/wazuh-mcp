@@ -1,0 +1,91 @@
+"""QueuedSink: bounded queue, fan-out drop-oldest, exponential backoff, clean
+shutdown."""
+from __future__ import annotations
+
+import asyncio
+from typing import Any
+
+import pytest
+
+from wazuh_mcp.observability.sinks.base import QueuedSink
+
+
+class _ListSink(QueuedSink):
+    """Test sink: collects delivered events in memory."""
+
+    def __init__(self, *, fail_first_n: int = 0, maxsize: int = 10, max_attempts: int = 3):
+        super().__init__(maxsize=maxsize, max_attempts=max_attempts, backoff_base_s=0.001)
+        self.delivered: list[dict[str, Any]] = []
+        self.attempts = 0
+        self._fail_first_n = fail_first_n
+        self.dropped: list[tuple[dict[str, Any], str]] = []
+
+    async def _deliver(self, event: dict[str, Any]) -> None:
+        self.attempts += 1
+        if self._fail_first_n > 0:
+            self._fail_first_n -= 1
+            raise RuntimeError("synthetic delivery failure")
+        self.delivered.append(event)
+
+    def _record_drop(self, event: dict[str, Any], reason: str) -> None:
+        self.dropped.append((event, reason))
+
+
+@pytest.mark.asyncio
+async def test_normal_delivery() -> None:
+    sink = _ListSink()
+    await sink.start()
+    sink.submit({"tool": "alerts.search_alerts", "n": 1})
+    sink.submit({"tool": "alerts.search_alerts", "n": 2})
+    await sink.stop()
+    assert sink.delivered == [{"tool": "alerts.search_alerts", "n": 1},
+                              {"tool": "alerts.search_alerts", "n": 2}]
+
+
+@pytest.mark.asyncio
+async def test_retry_then_success() -> None:
+    sink = _ListSink(fail_first_n=2)
+    await sink.start()
+    sink.submit({"n": 1})
+    await asyncio.sleep(0.1)   # let backoff play out
+    await sink.stop()
+    assert sink.delivered == [{"n": 1}]
+    assert sink.attempts == 3   # 2 failures + 1 success
+
+
+@pytest.mark.asyncio
+async def test_drop_after_max_attempts() -> None:
+    sink = _ListSink(fail_first_n=100, max_attempts=3)
+    await sink.start()
+    sink.submit({"n": 1})
+    await asyncio.sleep(0.2)
+    await sink.stop()
+    assert sink.delivered == []
+    assert len(sink.dropped) == 1
+    assert sink.dropped[0][1] == "delivery_failed"
+
+
+@pytest.mark.asyncio
+async def test_bounded_queue_drops_oldest_when_full() -> None:
+    sink = _ListSink(maxsize=3)
+    # Don't start the drain yet — queue fills.
+    sink.submit({"n": 1})
+    sink.submit({"n": 2})
+    sink.submit({"n": 3})
+    sink.submit({"n": 4})   # should evict {"n": 1}
+    assert any(d[1] == "overflow" for d in sink.dropped)
+    await sink.start()
+    await sink.stop()
+    # Remaining events drained in order (2, 3, 4 — 1 was dropped)
+    delivered_ns = [e["n"] for e in sink.delivered]
+    assert delivered_ns == [2, 3, 4]
+
+
+@pytest.mark.asyncio
+async def test_stop_drains_remaining() -> None:
+    sink = _ListSink()
+    await sink.start()
+    for i in range(5):
+        sink.submit({"n": i})
+    await sink.stop()
+    assert len(sink.delivered) == 5
