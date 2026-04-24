@@ -292,6 +292,7 @@ def build_app(cfg: AppConfig, audit: MultiSinkAuditEmitter | None = None) -> Fas
         audit_emitter=audit_emitter,
         limiter=limiter,
         rbac_policy=_rbac_policy,
+        tenant_cfg=cfg.tenant,
     )
     _install_rbac_hooks(app, rbac_policy=_rbac_policy, audit_emitter=audit_emitter)
 
@@ -438,6 +439,7 @@ def build_http_app(http_cfg: HttpAppConfig, audit: MultiSinkAuditEmitter | None 
         audit_emitter=audit_emitter,
         limiter=limiter,
         rbac_policy=_rbac_policy,
+        tenant_cfg=http_cfg.tenant,
     )
     _install_rbac_hooks(mcp_app, rbac_policy=_rbac_policy, audit_emitter=audit_emitter)
 
@@ -482,6 +484,7 @@ def _register_everything(
     audit_emitter: MultiSinkAuditEmitter,
     limiter: RateLimiter,
     rbac_policy: Callable[[Session], dict[str, list[str]]],
+    tenant_cfg: TenantConfig | None = None,
 ) -> None:
     """Register every M3 tool, resource, and prompt onto ``mcp_app``.
 
@@ -916,4 +919,223 @@ def _register_everything(
             indexer=indexer,
             server_api=server_api,
             audit=audit_emitter,
+        )
+
+    # ---------- M4b write.* tools ----------
+    # TenantConfig.write_allowlist semantics:
+    #   None (default) -> every write.* tool registered.
+    #   Non-empty list -> only named tools registered.
+    #   Empty list     -> no write tools registered at all.
+    # When tenant_cfg is None (legacy callers), default to "register all"
+    # with an empty active-response allowlist (run_active_response will then
+    # reject every call, which is the right default for a missing config).
+    from wazuh_mcp.tools.write import (
+        AddAgentToGroupArgs,
+        CreateRuleArgs,
+        IsolateAgentArgs,
+        RemoveAgentFromGroupArgs,
+        RestartAgentArgs,
+        RunActiveResponseArgs,
+        UpdateRuleArgs,
+    )
+    from wazuh_mcp.tools.write import (
+        add_agent_to_group as _add_agent_to_group,
+    )
+    from wazuh_mcp.tools.write import (
+        create_rule as _create_rule,
+    )
+    from wazuh_mcp.tools.write import (
+        isolate_agent as _isolate_agent,
+    )
+    from wazuh_mcp.tools.write import (
+        remove_agent_from_group as _remove_agent_from_group,
+    )
+    from wazuh_mcp.tools.write import (
+        restart_agent as _restart_agent,
+    )
+    from wazuh_mcp.tools.write import (
+        run_active_response as _run_active_response,
+    )
+    from wazuh_mcp.tools.write import (
+        update_rule as _update_rule,
+    )
+
+    def _should_register(name: str, allowlist: list[str] | None) -> bool:
+        if allowlist is None:
+            return True
+        return name in allowlist
+
+    allowlist: list[str] | None = tenant_cfg.write_allowlist if tenant_cfg is not None else None
+    ar_allowlist: list[str] = tenant_cfg.active_response_allowlist if tenant_cfg is not None else []
+
+    _write_desc_prefix = (
+        "WRITE tool. Destructive side effects. Before calling, explicitly "
+        "confirm with the human user what action they want taken and that "
+        "they approve. Only set confirm:true after the human has explicitly "
+        "approved the specific call. "
+    )
+
+    if _should_register("write.isolate_agent", allowlist):
+
+        async def _isolate_inner(**kwargs: Any) -> Any:
+            args = IsolateAgentArgs(**kwargs)
+            session = current_session()
+            sapi = await server_api_pool.acquire(session.tenant_id)
+            return await _isolate_agent(args=args, session=session, server_api=sapi)
+
+        mcp_app.tool(
+            name="write.isolate_agent",
+            description=_write_desc_prefix
+            + "Isolates a Wazuh agent (blocks network traffic via Wazuh's isolate active-response).",
+            meta={"toolset": "writes"},
+        )(
+            instrumented_tool(
+                tool_name="write.isolate_agent",
+                handler=_isolate_inner,
+                rbac_policy=rbac_policy,
+                limiter=limiter,
+                audit=audit_emitter,
+            )
+        )
+
+    if _should_register("write.restart_agent", allowlist):
+
+        async def _restart_inner(**kwargs: Any) -> Any:
+            args = RestartAgentArgs(**kwargs)
+            session = current_session()
+            sapi = await server_api_pool.acquire(session.tenant_id)
+            return await _restart_agent(args=args, session=session, server_api=sapi)
+
+        mcp_app.tool(
+            name="write.restart_agent",
+            description=_write_desc_prefix + "Restarts the Wazuh agent process on the named agent.",
+            meta={"toolset": "writes"},
+        )(
+            instrumented_tool(
+                tool_name="write.restart_agent",
+                handler=_restart_inner,
+                rbac_policy=rbac_policy,
+                limiter=limiter,
+                audit=audit_emitter,
+            )
+        )
+
+    if _should_register("write.add_agent_to_group", allowlist):
+
+        async def _add_group_inner(**kwargs: Any) -> Any:
+            args = AddAgentToGroupArgs(**kwargs)
+            session = current_session()
+            sapi = await server_api_pool.acquire(session.tenant_id)
+            return await _add_agent_to_group(args=args, session=session, server_api=sapi)
+
+        mcp_app.tool(
+            name="write.add_agent_to_group",
+            description=_write_desc_prefix
+            + "Adds an agent to a Wazuh group (applies group rules + shared config).",
+            meta={"toolset": "writes"},
+        )(
+            instrumented_tool(
+                tool_name="write.add_agent_to_group",
+                handler=_add_group_inner,
+                rbac_policy=rbac_policy,
+                limiter=limiter,
+                audit=audit_emitter,
+            )
+        )
+
+    if _should_register("write.remove_agent_from_group", allowlist):
+
+        async def _remove_group_inner(**kwargs: Any) -> Any:
+            args = RemoveAgentFromGroupArgs(**kwargs)
+            session = current_session()
+            sapi = await server_api_pool.acquire(session.tenant_id)
+            return await _remove_agent_from_group(args=args, session=session, server_api=sapi)
+
+        mcp_app.tool(
+            name="write.remove_agent_from_group",
+            description=_write_desc_prefix + "Removes an agent from a Wazuh group.",
+            meta={"toolset": "writes"},
+        )(
+            instrumented_tool(
+                tool_name="write.remove_agent_from_group",
+                handler=_remove_group_inner,
+                rbac_policy=rbac_policy,
+                limiter=limiter,
+                audit=audit_emitter,
+            )
+        )
+
+    if _should_register("write.create_rule", allowlist):
+
+        async def _create_rule_inner(**kwargs: Any) -> Any:
+            args = CreateRuleArgs(**kwargs)
+            session = current_session()
+            sapi = await server_api_pool.acquire(session.tenant_id)
+            return await _create_rule(args=args, session=session, server_api=sapi)
+
+        mcp_app.tool(
+            name="write.create_rule",
+            description=_write_desc_prefix
+            + "Uploads a new Wazuh rule file. Activation requires a manager restart out of band.",
+            meta={"toolset": "writes"},
+        )(
+            instrumented_tool(
+                tool_name="write.create_rule",
+                handler=_create_rule_inner,
+                rbac_policy=rbac_policy,
+                limiter=limiter,
+                audit=audit_emitter,
+            )
+        )
+
+    if _should_register("write.update_rule", allowlist):
+
+        async def _update_rule_inner(**kwargs: Any) -> Any:
+            args = UpdateRuleArgs(**kwargs)
+            session = current_session()
+            sapi = await server_api_pool.acquire(session.tenant_id)
+            return await _update_rule(args=args, session=session, server_api=sapi)
+
+        mcp_app.tool(
+            name="write.update_rule",
+            description=_write_desc_prefix
+            + "Updates an existing Wazuh rule file. Activation requires a manager restart.",
+            meta={"toolset": "writes"},
+        )(
+            instrumented_tool(
+                tool_name="write.update_rule",
+                handler=_update_rule_inner,
+                rbac_policy=rbac_policy,
+                limiter=limiter,
+                audit=audit_emitter,
+            )
+        )
+
+    if _should_register("write.run_active_response", allowlist):
+
+        async def _run_ar_inner(**kwargs: Any) -> Any:
+            args = RunActiveResponseArgs(**kwargs)
+            session = current_session()
+            sapi = await server_api_pool.acquire(session.tenant_id)
+            return await _run_active_response(
+                args=args,
+                session=session,
+                server_api=sapi,
+                ar_allowlist=ar_allowlist,
+            )
+
+        mcp_app.tool(
+            name="write.run_active_response",
+            description=_write_desc_prefix
+            + "Runs a tenant-allowlisted active-response command on a single agent. "
+            + "The command must be enumerated in TenantConfig.active_response_allowlist.",
+            meta={"toolset": "writes"},
+        )(
+            instrumented_tool(
+                tool_name="write.run_active_response",
+                handler=_run_ar_inner,
+                rbac_policy=rbac_policy,
+                limiter=limiter,
+                audit=audit_emitter,
+            )
         )
