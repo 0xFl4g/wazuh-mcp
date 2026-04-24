@@ -1,0 +1,54 @@
+name: integration
+
+on:
+  schedule:
+    - cron: "0 6 * * *"   # daily 06:00 UTC
+  workflow_dispatch:
+
+concurrency:
+  group: integration-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  integration:
+    runs-on: ubuntu-latest   # amd64 — avoids QEMU segfault on arm64+darwin
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: latest
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Sync deps
+        run: uv sync --all-groups
+
+      - name: Bootstrap Wazuh + Keycloak
+        run: bash docker/bootstrap.sh
+        env:
+          COMPOSE_PROJECT_NAME: wazuh-mcp-ci
+
+      - name: Run integration suite
+        run: uv run pytest -m integration -v --junitxml=integration-report.xml
+
+      - name: Upload JUnit on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-report
+          path: integration-report.xml
+
+      - name: Dump compose logs on failure
+        if: failure()
+        run: docker compose -p wazuh-mcp-ci -f docker/compose.yaml logs --no-color > compose.log || true
+
+      - name: Upload compose logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: compose-log
+          path: compose.log
