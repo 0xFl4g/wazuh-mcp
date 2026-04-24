@@ -9,7 +9,7 @@
 set -euo pipefail
 
 COMPOSE_FILE="$(dirname "$0")/integration-compose.yml"
-INDEXER_CONTAINER="docker-wazuh-indexer-1"
+INDEXER_CONTAINER="${COMPOSE_PROJECT_NAME:-docker}-wazuh-indexer-1"
 KEYCLOAK_URL="http://localhost:8080"
 INDEXER_URL="https://localhost:9200"
 ADMIN_AUTH="admin:admin"
