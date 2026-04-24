@@ -77,7 +77,6 @@ async def test_get_alert_happy_path(session, audit, indexer, httpx_mock):
         args=GetAlertArgs(alert_id="abc"),
         session=session,
         indexer=indexer,
-        audit=audit,
     )
     assert result.alert.id == "abc"
 
@@ -94,7 +93,6 @@ async def test_get_alert_not_found(session, audit, indexer, httpx_mock):
             args=GetAlertArgs(alert_id="missing"),
             session=session,
             indexer=indexer,
-            audit=audit,
         )
     assert exc_info.value.code == "not_found"
 
@@ -134,7 +132,6 @@ async def test_alerts_by_agent_happy(session, audit, indexer, httpx_mock):
         args=AlertsByAgentArgs(agent_id="001", time_range="24h", size=2),
         session=session,
         indexer=indexer,
-        audit=audit,
     )
     assert result.total == 2
     assert result.truncated is True
@@ -148,5 +145,4 @@ async def test_alerts_by_mitre_rejects_bad_technique_id(session, audit, indexer)
             args=AlertsByMitreArgs(technique_id="NOT_VALID", time_range="24h"),
             session=session,
             indexer=indexer,
-            audit=audit,
         )

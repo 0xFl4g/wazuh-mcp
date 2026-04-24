@@ -204,8 +204,24 @@ def instrumented_tool(
                     {"tenant": session.tenant_id, "tool": tool_name},
                 )
                 # Best-effort result_count discovery from Pydantic results.
+                # Attrs enumerated here are the list-valued fields on every
+                # M3 result model (SearchAlertsResult.alerts, AgentsResult.agents,
+                # AgentInventoryResult.items, VulnerabilitiesResult.vulnerabilities,
+                # MitreSearchResult.techniques, FimResult.events, HuntQueryResult.alerts).
+                # Singleton results (GetAlertResult, AgentResult, MitreTechniqueResult)
+                # fall through to count=0 by design — the decorator can't know
+                # "single item" without a result-model registry, and 0 keeps the
+                # shape consistent with error paths.
                 count = 0
-                for attr in ("alerts", "agents", "items", "results"):
+                for attr in (
+                    "alerts",
+                    "agents",
+                    "items",
+                    "results",
+                    "vulnerabilities",
+                    "techniques",
+                    "events",
+                ):
                     val = getattr(result, attr, None)
                     if isinstance(val, list):
                         count = len(val)

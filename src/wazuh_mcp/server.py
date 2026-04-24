@@ -3,16 +3,23 @@
 M1 path: stdio + ConfigSessionFactory (single-session from config).
 M2 path: see transport/http.py for HTTP mode (uses OAuth/ApiKey factories).
 M3 path: _register_everything() wires all 17 tools, 3 resources, 3 prompts.
+M4a path: every tool wrapped by @instrumented_tool (RBAC, rate limit, OTel,
+audit), /metrics mounted under HTTP, OTel + auto-instrumentation bootstrap,
+list_tools/call_tool hooks install RBAC filter/guard on the low-level server.
 """
 
 from __future__ import annotations
 
+import importlib.metadata
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+import mcp.types as _mt
 import yaml
 from mcp.server.fastmcp import FastMCP
+from mcp.server.fastmcp.exceptions import ToolError
 
 from wazuh_mcp.auth.api_key import ApiKeySessionFactory
 from wazuh_mcp.auth.api_key_store import YamlApiKeyStore
@@ -21,7 +28,15 @@ from wazuh_mcp.auth.config_factory import ConfigSessionFactory
 from wazuh_mcp.auth.factory import SessionFactory
 from wazuh_mcp.auth.jwks_cache import JwksCache
 from wazuh_mcp.auth.oauth import OAuthSessionFactory
-from wazuh_mcp.observability.audit import AuditEmitter
+from wazuh_mcp.auth.session import Session
+from wazuh_mcp.observability.audit import MultiSinkAuditEmitter
+from wazuh_mcp.observability.decorators import instrumented_tool
+from wazuh_mcp.observability.metrics import maybe_start_stdio_metrics_server
+from wazuh_mcp.observability.otel import init_otel
+from wazuh_mcp.observability.sinks.base import AuditSink
+from wazuh_mcp.rate_limit.limiter import InProcessRateLimiter, RateLimiter
+from wazuh_mcp.rbac.filter import is_allowed
+from wazuh_mcp.rbac.policy import effective_allowlist_for
 from wazuh_mcp.secrets.yaml_driver import YamlSecretStore
 from wazuh_mcp.tenancy.config import TenantConfig
 from wazuh_mcp.tenancy.issuer_index import IssuerIndex
@@ -37,11 +52,20 @@ from wazuh_mcp.wazuh.server_api import ServerApiClient
 from wazuh_mcp.wazuh.server_api_pool import ServerApiClientPool
 
 
+def _service_version() -> str:
+    try:
+        return importlib.metadata.version("wazuh-mcp")
+    except importlib.metadata.PackageNotFoundError:
+        return "0.0.0+dev"
+
+
 @dataclass(frozen=True)
 class AppConfig:
     factory: SessionFactory
     tenant: TenantConfig
     secrets: YamlSecretStore
+    limiter: RateLimiter | None = None
+    audit: MultiSinkAuditEmitter | None = None
 
 
 def load_config(config_dir: Path) -> AppConfig:
@@ -56,8 +80,124 @@ def load_config(config_dir: Path) -> AppConfig:
     return AppConfig(factory=factory, tenant=tenant, secrets=secrets)
 
 
-def build_app(cfg: AppConfig, audit: AuditEmitter | None = None) -> FastMCP:
-    audit_emitter = audit or AuditEmitter()
+def _build_sinks(tenant: TenantConfig, *, indexer_pool: Any) -> list[AuditSink]:
+    """Translate TenantConfig.audit_sinks config entries to sink instances."""
+    from wazuh_mcp.observability.sinks.file import FileSink
+    from wazuh_mcp.observability.sinks.http import HttpSink
+    from wazuh_mcp.observability.sinks.stream import StderrSink, StdoutSink
+    from wazuh_mcp.observability.sinks.wazuh_indexer import WazuhIndexerSink
+    from wazuh_mcp.tenancy.m4_config import (
+        FileSinkConfig,
+        HttpSinkConfig,
+        StderrSinkConfig,
+        StdoutSinkConfig,
+        WazuhIndexerSinkConfig,
+    )
+
+    sinks: list[AuditSink] = []
+    for cfg in tenant.audit_sinks:
+        if isinstance(cfg, StderrSinkConfig):
+            sinks.append(StderrSink())
+        elif isinstance(cfg, StdoutSinkConfig):
+            sinks.append(StdoutSink())
+        elif isinstance(cfg, FileSinkConfig):
+            sinks.append(
+                FileSink(
+                    path=cfg.path,
+                    rotate_size_bytes=cfg.rotate_size_mb * 1024 * 1024,
+                    keep=cfg.keep,
+                )
+            )
+        elif isinstance(cfg, HttpSinkConfig):
+            sinks.append(
+                HttpSink(
+                    url=str(cfg.url),
+                    batch=cfg.batch,
+                    flush_ms=cfg.flush_ms,
+                    max_attempts=cfg.max_attempts,
+                )
+            )
+        elif isinstance(cfg, WazuhIndexerSinkConfig):
+            if indexer_pool is None:
+                raise RuntimeError(
+                    "wazuh_indexer audit sink requires an indexer_pool; "
+                    "only available in HTTP mode."
+                )
+            sinks.append(
+                WazuhIndexerSink(
+                    pool=indexer_pool,
+                    tenant_id=tenant.tenant_id,
+                    index_prefix=cfg.index_prefix,
+                    batch=cfg.batch,
+                    flush_ms=cfg.flush_ms,
+                    max_attempts=cfg.max_attempts,
+                )
+            )
+    return sinks
+
+
+def _install_rbac_hooks(
+    mcp_app: FastMCP,
+    *,
+    rbac_policy: Callable[[Session], dict[str, list[str]]],
+) -> None:
+    """Install list_tools + call_tool wrappers on the low-level MCP server.
+
+    Per the 2026-04-24 FastMCP probe: FastMCP registers its handlers at
+    ``__init__`` time into the low-level ``Server.request_handlers``
+    single-slot dict. Re-registering on ``mcp_app._mcp_server`` after
+    ``_register_everything`` is the supported extension pattern and the
+    last registration wins.
+    """
+    _fastmcp_list_tools = mcp_app.list_tools
+    _fastmcp_call_tool = mcp_app.call_tool
+
+    @mcp_app._mcp_server.list_tools()
+    async def _rbac_list_tools() -> list[_mt.Tool]:
+        all_tools = await _fastmcp_list_tools()
+        try:
+            session = current_session()
+        except LookupError:
+            # stdio pre-session path: the process itself is the trust
+            # boundary, allow-all is the right default.
+            return all_tools
+        policy = rbac_policy(session)
+        return [t for t in all_tools if is_allowed(session, t.name, policy)]
+
+    async def _rbac_call_tool(name: str, arguments: dict[str, Any]) -> Any:
+        session = current_session()
+        policy = rbac_policy(session)
+        if not is_allowed(session, name, policy):
+            # Avoid info leak: a denied tool looks like an unknown tool
+            # from outside. The audit event (emitted by @instrumented_tool
+            # when call_tool dispatches) still records the forbidden outcome.
+            raise ToolError(f"Unknown tool: {name}")
+        return await _fastmcp_call_tool(name, arguments)
+
+    # validate_input=False because FastMCP's own call_tool has already
+    # promoted us past the cache layer; re-validating here would double-
+    # validate and is unnecessary since the inner handler runs the same
+    # schema pass.
+    mcp_app._mcp_server.call_tool(validate_input=False)(_rbac_call_tool)
+
+
+def build_app(cfg: AppConfig, audit: MultiSinkAuditEmitter | None = None) -> FastMCP:
+    """Build the stdio FastMCP app.
+
+    M4a invariants:
+      * init_otel runs first and is idempotent.
+      * maybe_start_stdio_metrics_server honors WAZUH_MCP_METRICS_ADDR env var.
+      * audit emitter start() is the caller's responsibility — stdio's
+        run_stdio() runner below calls it before entering the MCP loop.
+    """
+    init_otel(service_version=_service_version())
+    maybe_start_stdio_metrics_server()
+
+    audit_emitter = audit or cfg.audit or MultiSinkAuditEmitter(
+        sinks=_build_sinks(cfg.tenant, indexer_pool=None)
+    )
+    limiter = cfg.limiter or InProcessRateLimiter(default=cfg.tenant.rate_limit)
+
     app = FastMCP(name="wazuh-mcp")
 
     # Stdio is single-tenant. Build shared clients lazily; cache in
@@ -112,13 +252,21 @@ def build_app(cfg: AppConfig, audit: AuditEmitter | None = None) -> FastMCP:
             await _ensure_session_async()
             return await _open_server_api()
 
+    def _rbac_policy(session: Session) -> dict[str, list[str]]:
+        return effective_allowlist_for(tenant_override=cfg.tenant.role_tool_allowlist)
+
     _register_everything(
         app,
         indexer_pool=_IndexerAdapter(),
         server_api_pool=_ServerApiAdapter(),
         audit_emitter=audit_emitter,
+        limiter=limiter,
+        rbac_policy=_rbac_policy,
     )
+    _install_rbac_hooks(app, rbac_policy=_rbac_policy)
 
+    # Expose the emitter so the stdio runner can manage lifecycle.
+    app._wazuh_mcp_audit_emitter = audit_emitter  # ty: ignore[unresolved-attribute]
     return app
 
 
@@ -135,7 +283,14 @@ def run_stdio(config_dir: Path) -> None:
         # single-tenant/single-user by construction.
         session = await cfg.factory.build({})
         set_current_session(session)
-        await app.run_stdio_async()
+        emitter: MultiSinkAuditEmitter | None = getattr(app, "_wazuh_mcp_audit_emitter", None)
+        if emitter is not None:
+            await emitter.start()
+        try:
+            await app.run_stdio_async()
+        finally:
+            if emitter is not None:
+                await emitter.stop()
 
     asyncio.run(_runner())
 
@@ -152,6 +307,10 @@ class HttpAppConfig:
     issuer_index: IssuerIndex
     resource_url: str
     authorization_server: str
+    # M4a wiring — defaults preserve M3 call sites.
+    tenant: TenantConfig | None = None
+    limiter: RateLimiter | None = None
+    audit: MultiSinkAuditEmitter | None = None
 
 
 def _tenant_ids(path: Path) -> list[str]:
@@ -186,6 +345,10 @@ def load_http_config(config_dir: Path) -> HttpAppConfig:
     server_api_pool = ServerApiClientPool(registry=registry, secrets=secrets)
 
     http_cfg = server_cfg["http"]
+    # M4a: default to the first tenant's M4a overrides for single-tenant
+    # rate-limit/audit-sink wiring. Multi-tenant policy resolution is
+    # M4b scope — see plan.
+    primary_tenant = all_tenants[0] if all_tenants else None
     return HttpAppConfig(
         pool=pool,
         server_api_pool=server_api_pool,
@@ -194,20 +357,53 @@ def load_http_config(config_dir: Path) -> HttpAppConfig:
         issuer_index=issuer_index,
         resource_url=http_cfg["public_url"],
         authorization_server=oauth_cfg["issuer"],
+        tenant=primary_tenant,
     )
 
 
-def build_http_app(http_cfg: HttpAppConfig, audit: AuditEmitter | None = None):
-    """Build the ASGI app. Returns a Starlette/SessionMiddleware-wrapped app."""
-    audit_emitter = audit or AuditEmitter()
+def build_http_app(http_cfg: HttpAppConfig, audit: MultiSinkAuditEmitter | None = None):
+    """Build the ASGI app. Returns a Starlette/SessionMiddleware-wrapped app.
+
+    M4a invariants:
+      * init_otel runs first.
+      * /metrics is mounted on the ASGI app (build_asgi_app handles it).
+      * audit emitter start()/stop() is attached to the ASGI lifespan
+        by build_asgi_app.
+    """
+    init_otel(service_version=_service_version())
+
+    sinks: list[AuditSink] = []
+    if http_cfg.tenant is not None:
+        sinks = _build_sinks(http_cfg.tenant, indexer_pool=http_cfg.pool)
+    audit_emitter = audit or http_cfg.audit or MultiSinkAuditEmitter(sinks=sinks or None)
+
+    if http_cfg.limiter is not None:
+        limiter = http_cfg.limiter
+    elif http_cfg.tenant is not None:
+        limiter = InProcessRateLimiter(default=http_cfg.tenant.rate_limit)
+    else:
+        # Extremely defensive: the M4a tenancy registry always yields at
+        # least one tenant. Fall back to permissive defaults so the server
+        # still boots.
+        from wazuh_mcp.tenancy.m4_config import RateLimitConfig
+
+        limiter = InProcessRateLimiter(default=RateLimitConfig())
+
     mcp_app = FastMCP(name="wazuh-mcp")
+
+    def _rbac_policy(session: Session) -> dict[str, list[str]]:
+        override = http_cfg.tenant.role_tool_allowlist if http_cfg.tenant is not None else None
+        return effective_allowlist_for(tenant_override=override)
 
     _register_everything(
         mcp_app,
         indexer_pool=http_cfg.pool,
         server_api_pool=http_cfg.server_api_pool,
         audit_emitter=audit_emitter,
+        limiter=limiter,
+        rbac_policy=_rbac_policy,
     )
+    _install_rbac_hooks(mcp_app, rbac_policy=_rbac_policy)
 
     ready = [False]
 
@@ -220,6 +416,7 @@ def build_http_app(http_cfg: HttpAppConfig, audit: AuditEmitter | None = None):
         resource_url=http_cfg.resource_url,
         authorization_server=http_cfg.authorization_server,
         ready_fn=ready_fn,
+        audit_emitter=audit_emitter,
     )
 
     ready[0] = True
@@ -246,14 +443,39 @@ def _register_everything(
     *,
     indexer_pool: Any,
     server_api_pool: Any,
-    audit_emitter: AuditEmitter,
+    audit_emitter: MultiSinkAuditEmitter,
+    limiter: RateLimiter,
+    rbac_policy: Callable[[Session], dict[str, list[str]]],
 ) -> None:
-    """Register every M3 tool, resource, and prompt onto mcp_app.
+    """Register every M3 tool, resource, and prompt onto ``mcp_app``.
+
+    Every tool is wrapped by :func:`instrumented_tool` so RBAC, rate-limit,
+    OTel, audit, and metrics fire uniformly around each call. Resources
+    and prompts are not wrapped in M4a — they keep their existing audit
+    emission inside the handler, since they're not part of the tool
+    surface the decorator covers.
 
     ``indexer_pool`` and ``server_api_pool`` are treated as objects with an
     async ``acquire(tenant_id)`` method. The HTTP path passes the real
-    IndexerClientPool / ServerApiClientPool; stdio passes thin adapters.
+    pools; stdio passes thin adapters.
     """
+
+    def _wrap(
+        *,
+        tool_name: str,
+        handler: Callable[..., Any],
+        description: str,
+        meta: dict[str, Any],
+    ) -> None:
+        wrapped = instrumented_tool(
+            tool_name=tool_name,
+            handler=handler,
+            rbac_policy=rbac_policy,
+            limiter=limiter,
+            audit=audit_emitter,
+        )
+        mcp_app.tool(name=tool_name, description=description, meta=meta)(wrapped)
+
     # ---------- alerts.* ----------
     from wazuh_mcp.tools.alerts import (
         AlertsByAgentArgs,
@@ -266,8 +488,15 @@ def _register_everything(
         search_alerts,
     )
 
-    @mcp_app.tool(
-        name="alerts.search_alerts",
+    async def _search_alerts_inner(**kwargs: Any) -> Any:
+        args = SearchAlertsArgs(**kwargs)
+        session = current_session()
+        indexer = await indexer_pool.acquire(session.tenant_id)
+        return await search_alerts(args=args, session=session, indexer=indexer)
+
+    _wrap(
+        tool_name="alerts.search_alerts",
+        handler=_search_alerts_inner,
         description=(
             "Search Wazuh alerts by time range and filters. Use when the user "
             "asks about security events, detections, or incidents within a "
@@ -276,48 +505,45 @@ def _register_everything(
         ),
         meta={"toolset": "alerts"},
     )
-    async def _search_alerts(**kwargs):
-        args = SearchAlertsArgs(**kwargs)
-        session = current_session()
-        indexer = await indexer_pool.acquire(session.tenant_id)
-        return await search_alerts(args=args, session=session, indexer=indexer, audit=audit_emitter)
 
-    @mcp_app.tool(
-        name="alerts.get_alert",
-        description="Fetch a single Wazuh alert by its document id.",
-        meta={"toolset": "alerts"},
-    )
-    async def _get_alert(**kwargs):
+    async def _get_alert_inner(**kwargs: Any) -> Any:
         args = GetAlertArgs(**kwargs)
         session = current_session()
         indexer = await indexer_pool.acquire(session.tenant_id)
-        return await get_alert(args=args, session=session, indexer=indexer, audit=audit_emitter)
+        return await get_alert(args=args, session=session, indexer=indexer)
 
-    @mcp_app.tool(
-        name="alerts.alerts_by_agent",
-        description="List alerts for a specific agent over a time range.",
+    _wrap(
+        tool_name="alerts.get_alert",
+        handler=_get_alert_inner,
+        description="Fetch a single Wazuh alert by its document id.",
         meta={"toolset": "alerts"},
     )
-    async def _alerts_by_agent(**kwargs):
+
+    async def _alerts_by_agent_inner(**kwargs: Any) -> Any:
         args = AlertsByAgentArgs(**kwargs)
         session = current_session()
         indexer = await indexer_pool.acquire(session.tenant_id)
-        return await alerts_by_agent(
-            args=args, session=session, indexer=indexer, audit=audit_emitter
-        )
+        return await alerts_by_agent(args=args, session=session, indexer=indexer)
 
-    @mcp_app.tool(
-        name="alerts.alerts_by_mitre",
-        description="List alerts matching a MITRE ATT&CK technique id.",
+    _wrap(
+        tool_name="alerts.alerts_by_agent",
+        handler=_alerts_by_agent_inner,
+        description="List alerts for a specific agent over a time range.",
         meta={"toolset": "alerts"},
     )
-    async def _alerts_by_mitre(**kwargs):
+
+    async def _alerts_by_mitre_inner(**kwargs: Any) -> Any:
         args = AlertsByMitreArgs(**kwargs)
         session = current_session()
         indexer = await indexer_pool.acquire(session.tenant_id)
-        return await alerts_by_mitre(
-            args=args, session=session, indexer=indexer, audit=audit_emitter
-        )
+        return await alerts_by_mitre(args=args, session=session, indexer=indexer)
+
+    _wrap(
+        tool_name="alerts.alerts_by_mitre",
+        handler=_alerts_by_mitre_inner,
+        description="List alerts matching a MITRE ATT&CK technique id.",
+        meta={"toolset": "alerts"},
+    )
 
     # ---------- agents.* ----------
     from wazuh_mcp.tools.agents import (
@@ -335,70 +561,70 @@ def _register_everything(
         get_agent as _get_agent_fn,
     )
 
-    @mcp_app.tool(
-        name="agents.list_agents",
-        description="List Wazuh agents, optionally filtered by status or group.",
-        meta={"toolset": "agents"},
-    )
-    async def _list_agents(**kwargs):
+    async def _list_agents_inner(**kwargs: Any) -> Any:
         args = ListAgentsArgs(**kwargs)
         session = current_session()
         server_api = await server_api_pool.acquire(session.tenant_id)
-        return await list_agents(
-            args=args, session=session, server_api=server_api, audit=audit_emitter
-        )
+        return await list_agents(args=args, session=session, server_api=server_api)
 
-    @mcp_app.tool(
-        name="agents.get_agent",
-        description="Fetch a single Wazuh agent by id.",
+    _wrap(
+        tool_name="agents.list_agents",
+        handler=_list_agents_inner,
+        description="List Wazuh agents, optionally filtered by status or group.",
         meta={"toolset": "agents"},
     )
-    async def _agents_get_agent(**kwargs):
+
+    async def _get_agent_inner(**kwargs: Any) -> Any:
         args = _GetAgentArgs(**kwargs)
         session = current_session()
         server_api = await server_api_pool.acquire(session.tenant_id)
-        return await _get_agent_fn(
-            args=args, session=session, server_api=server_api, audit=audit_emitter
-        )
+        return await _get_agent_fn(args=args, session=session, server_api=server_api)
 
-    @mcp_app.tool(
-        name="agents.agent_processes",
+    _wrap(
+        tool_name="agents.get_agent",
+        handler=_get_agent_inner,
+        description="Fetch a single Wazuh agent by id.",
+        meta={"toolset": "agents"},
+    )
+
+    async def _agent_processes_inner(**kwargs: Any) -> Any:
+        args = AgentSubquery(**kwargs)
+        session = current_session()
+        server_api = await server_api_pool.acquire(session.tenant_id)
+        return await agent_processes(args=args, session=session, server_api=server_api)
+
+    _wrap(
+        tool_name="agents.agent_processes",
+        handler=_agent_processes_inner,
         description="List processes seen on an agent (syscollector inventory).",
         meta={"toolset": "agents"},
     )
-    async def _agent_processes(**kwargs):
+
+    async def _agent_packages_inner(**kwargs: Any) -> Any:
         args = AgentSubquery(**kwargs)
         session = current_session()
         server_api = await server_api_pool.acquire(session.tenant_id)
-        return await agent_processes(
-            args=args, session=session, server_api=server_api, audit=audit_emitter
-        )
+        return await agent_packages(args=args, session=session, server_api=server_api)
 
-    @mcp_app.tool(
-        name="agents.agent_packages",
+    _wrap(
+        tool_name="agents.agent_packages",
+        handler=_agent_packages_inner,
         description="List installed packages on an agent (syscollector inventory).",
         meta={"toolset": "agents"},
     )
-    async def _agent_packages(**kwargs):
+
+    async def _agent_ports_inner(**kwargs: Any) -> Any:
         args = AgentSubquery(**kwargs)
         session = current_session()
         server_api = await server_api_pool.acquire(session.tenant_id)
-        return await agent_packages(
-            args=args, session=session, server_api=server_api, audit=audit_emitter
-        )
+        return await agent_ports(args=args, session=session, server_api=server_api)
 
-    @mcp_app.tool(
-        name="agents.agent_ports",
+    _wrap(
+        tool_name="agents.agent_ports",
+        handler=_agent_ports_inner,
         description="List open ports on an agent (syscollector inventory).",
         meta={"toolset": "agents"},
     )
-    async def _agent_ports(**kwargs):
-        args = AgentSubquery(**kwargs)
-        session = current_session()
-        server_api = await server_api_pool.acquire(session.tenant_id)
-        return await agent_ports(
-            args=args, session=session, server_api=server_api, audit=audit_emitter
-        )
 
     # ---------- vulnerabilities.* ----------
     from wazuh_mcp.tools.vulns import (
@@ -408,31 +634,33 @@ def _register_everything(
         search_vulnerabilities,
     )
 
-    @mcp_app.tool(
-        name="vulnerabilities.list_vulnerabilities_by_agent",
-        description="List vulnerabilities for an agent (Wazuh 4.8+ indexer-backed).",
-        meta={"toolset": "vulnerabilities"},
-    )
-    async def _list_vulns(**kwargs):
+    async def _list_vulns_inner(**kwargs: Any) -> Any:
         args = ListVulnerabilitiesByAgentArgs(**kwargs)
         session = current_session()
         indexer = await indexer_pool.acquire(session.tenant_id)
         return await list_vulnerabilities_by_agent(
-            args=args, session=session, indexer=indexer, audit=audit_emitter
+            args=args, session=session, indexer=indexer
         )
 
-    @mcp_app.tool(
-        name="vulnerabilities.search_vulnerabilities",
-        description="Search vulnerabilities by CVE id or minimum severity.",
+    _wrap(
+        tool_name="vulnerabilities.list_vulnerabilities_by_agent",
+        handler=_list_vulns_inner,
+        description="List vulnerabilities for an agent (Wazuh 4.8+ indexer-backed).",
         meta={"toolset": "vulnerabilities"},
     )
-    async def _search_vulns(**kwargs):
+
+    async def _search_vulns_inner(**kwargs: Any) -> Any:
         args = SearchVulnerabilitiesArgs(**kwargs)
         session = current_session()
         indexer = await indexer_pool.acquire(session.tenant_id)
-        return await search_vulnerabilities(
-            args=args, session=session, indexer=indexer, audit=audit_emitter
-        )
+        return await search_vulnerabilities(args=args, session=session, indexer=indexer)
+
+    _wrap(
+        tool_name="vulnerabilities.search_vulnerabilities",
+        handler=_search_vulns_inner,
+        description="Search vulnerabilities by CVE id or minimum severity.",
+        meta={"toolset": "vulnerabilities"},
+    )
 
     # ---------- mitre.* ----------
     from wazuh_mcp.tools.mitre import (
@@ -442,31 +670,31 @@ def _register_everything(
         search_mitre,
     )
 
-    @mcp_app.tool(
-        name="mitre.get_mitre_technique",
-        description="Look up a MITRE ATT&CK technique by id (e.g. T1110.001).",
-        meta={"toolset": "mitre"},
-    )
-    async def _get_technique(**kwargs):
+    async def _get_technique_inner(**kwargs: Any) -> Any:
         args = GetMitreTechniqueArgs(**kwargs)
         session = current_session()
         server_api = await server_api_pool.acquire(session.tenant_id)
-        return await get_mitre_technique(
-            args=args, session=session, server_api=server_api, audit=audit_emitter
-        )
+        return await get_mitre_technique(args=args, session=session, server_api=server_api)
 
-    @mcp_app.tool(
-        name="mitre.search_mitre",
-        description="Search MITRE techniques by name substring or tactic.",
+    _wrap(
+        tool_name="mitre.get_mitre_technique",
+        handler=_get_technique_inner,
+        description="Look up a MITRE ATT&CK technique by id (e.g. T1110.001).",
         meta={"toolset": "mitre"},
     )
-    async def _search_mitre(**kwargs):
+
+    async def _search_mitre_inner(**kwargs: Any) -> Any:
         args = SearchMitreArgs(**kwargs)
         session = current_session()
         server_api = await server_api_pool.acquire(session.tenant_id)
-        return await search_mitre(
-            args=args, session=session, server_api=server_api, audit=audit_emitter
-        )
+        return await search_mitre(args=args, session=session, server_api=server_api)
+
+    _wrap(
+        tool_name="mitre.search_mitre",
+        handler=_search_mitre_inner,
+        description="Search MITRE techniques by name substring or tactic.",
+        meta={"toolset": "mitre"},
+    )
 
     # ---------- hunt.* ----------
     from wazuh_mcp.tools.hunt import (
@@ -476,30 +704,34 @@ def _register_everything(
         pivot_by_ioc,
     )
 
-    @mcp_app.tool(
-        name="hunt.hunt_query",
+    async def _hunt_inner(**kwargs: Any) -> Any:
+        args = HuntQueryArgs(**kwargs)
+        session = current_session()
+        indexer = await indexer_pool.acquire(session.tenant_id)
+        return await hunt_query(args=args, session=session, indexer=indexer)
+
+    _wrap(
+        tool_name="hunt.hunt_query",
+        handler=_hunt_inner,
         description=(
             "Run a constrained-grammar hunt across alerts. Accepts structured "
             "{field, op, value} clauses from an allowlist - never raw DSL."
         ),
         meta={"toolset": "hunt"},
     )
-    async def _hunt(**kwargs):
-        args = HuntQueryArgs(**kwargs)
-        session = current_session()
-        indexer = await indexer_pool.acquire(session.tenant_id)
-        return await hunt_query(args=args, session=session, indexer=indexer, audit=audit_emitter)
 
-    @mcp_app.tool(
-        name="hunt.pivot_by_ioc",
-        description="Pivot alerts by hash/ip/user/domain (preset over hunt_query).",
-        meta={"toolset": "hunt"},
-    )
-    async def _pivot(**kwargs):
+    async def _pivot_inner(**kwargs: Any) -> Any:
         args = PivotByIocArgs(**kwargs)
         session = current_session()
         indexer = await indexer_pool.acquire(session.tenant_id)
-        return await pivot_by_ioc(args=args, session=session, indexer=indexer, audit=audit_emitter)
+        return await pivot_by_ioc(args=args, session=session, indexer=indexer)
+
+    _wrap(
+        tool_name="hunt.pivot_by_ioc",
+        handler=_pivot_inner,
+        description="Pivot alerts by hash/ip/user/domain (preset over hunt_query).",
+        meta={"toolset": "hunt"},
+    )
 
     # ---------- fim.* ----------
     from wazuh_mcp.tools.fim import (
@@ -509,31 +741,31 @@ def _register_everything(
         fim_history_for_path,
     )
 
-    @mcp_app.tool(
-        name="fim.fim_history_for_path",
-        description="History of file-integrity events for a specific path.",
-        meta={"toolset": "fim"},
-    )
-    async def _fim_history(**kwargs):
+    async def _fim_history_inner(**kwargs: Any) -> Any:
         args = FimHistoryArgs(**kwargs)
         session = current_session()
         indexer = await indexer_pool.acquire(session.tenant_id)
-        return await fim_history_for_path(
-            args=args, session=session, indexer=indexer, audit=audit_emitter
-        )
+        return await fim_history_for_path(args=args, session=session, indexer=indexer)
 
-    @mcp_app.tool(
-        name="fim.fim_changes_by_agent",
-        description="Recent file-integrity changes on a specific agent.",
+    _wrap(
+        tool_name="fim.fim_history_for_path",
+        handler=_fim_history_inner,
+        description="History of file-integrity events for a specific path.",
         meta={"toolset": "fim"},
     )
-    async def _fim_changes(**kwargs):
+
+    async def _fim_changes_inner(**kwargs: Any) -> Any:
         args = FimChangesArgs(**kwargs)
         session = current_session()
         indexer = await indexer_pool.acquire(session.tenant_id)
-        return await fim_changes_by_agent(
-            args=args, session=session, indexer=indexer, audit=audit_emitter
-        )
+        return await fim_changes_by_agent(args=args, session=session, indexer=indexer)
+
+    _wrap(
+        tool_name="fim.fim_changes_by_agent",
+        handler=_fim_changes_inner,
+        description="Recent file-integrity changes on a specific agent.",
+        meta={"toolset": "fim"},
+    )
 
     # ---------- resources ----------
     # FastMCP provides @mcp.resource(uri) — if the URI contains {var} it is

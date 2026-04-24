@@ -48,7 +48,6 @@ async def handle(
             args=GetAlertArgs(alert_id=alert_id),
             session=session,
             indexer=indexer,
-            audit=audit,
         )
     except WazuhError as e:
         if e.code == "not_found":
@@ -67,7 +66,6 @@ async def handle(
                 args=GetAgentArgs(agent_id=agent_id),
                 session=session,
                 server_api=server_api,
-                audit=audit,
             )
             agent_block = json.dumps(agent_res.agent.model_dump(), indent=2)
         except WazuhError:
@@ -80,7 +78,6 @@ async def handle(
                 args=AlertsByAgentArgs(agent_id=agent_id, time_range="1h", size=10),
                 session=session,
                 indexer=indexer,
-                audit=audit,
             )
             neighbors_block = json.dumps([a.model_dump() for a in neighbors.alerts], indent=2)
         except WazuhError:

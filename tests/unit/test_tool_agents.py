@@ -90,7 +90,6 @@ async def test_list_agents_happy(session, audit, server_api, httpx_mock):
         args=ListAgentsArgs(status="active", size=25),
         session=session,
         server_api=server_api,
-        audit=audit,
     )
     assert result.total == 2
     assert [a.id for a in result.agents] == ["001", "002"]
@@ -108,7 +107,6 @@ async def test_get_agent_not_found(session, audit, server_api, httpx_mock):
             args=GetAgentArgs(agent_id="999"),
             session=session,
             server_api=server_api,
-            audit=audit,
         )
     assert exc_info.value.code == "not_found"
 
@@ -129,7 +127,6 @@ async def test_agent_packages_passes_run_as(session, audit, server_api, httpx_mo
         args=AgentSubquery(agent_id="001", size=10),
         session=session,
         server_api=server_api,
-        audit=audit,
     )
     assert result.agent_id == "001"
     assert result.items[0]["name"] == "openssl"

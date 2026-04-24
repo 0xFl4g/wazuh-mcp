@@ -13,14 +13,11 @@ Security posture:
 
 from __future__ import annotations
 
-import time
 from typing import Annotated, Any, Final, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from wazuh_mcp.auth.session import Session
-from wazuh_mcp.observability.audit import AuditEmitter
-from wazuh_mcp.wazuh.errors import WazuhError
 from wazuh_mcp.wazuh.indexer import IndexerClient
 from wazuh_mcp.wazuh.models import Alert
 from wazuh_mcp.wazuh.query import (
@@ -202,26 +199,10 @@ async def hunt_query(
     args: HuntQueryArgs,
     session: Session,
     indexer: IndexerClient,
-    audit: AuditEmitter,
 ) -> HuntQueryResult:
     """Tool name: hunt.hunt_query."""
-    started = time.monotonic()
-    arg_dict = args.model_dump(exclude_none=True)
-
-    try:
-        query = _build_hunt_dsl(args)
-        body = await indexer.search(index="wazuh-alerts-*", query=query)
-    except WazuhError as e:
-        audit.emit(
-            session=session,
-            tool="hunt.hunt_query",
-            args=arg_dict,
-            outcome="error",
-            result_count=0,
-            duration_ms=int((time.monotonic() - started) * 1000),
-            error_code=e.code,
-        )
-        raise
+    query = _build_hunt_dsl(args)
+    body = await indexer.search(index="wazuh-alerts-*", query=query)
 
     raw_hits = body.get("hits", {}).get("hits", [])
     total_block = body.get("hits", {}).get("total", {})
@@ -232,14 +213,6 @@ async def hunt_query(
         next_cursor = raw_hits[-1]["sort"]
     truncated = len(alerts) == args.size
 
-    audit.emit(
-        session=session,
-        tool="hunt.hunt_query",
-        args=arg_dict,
-        outcome="ok",
-        result_count=len(alerts),
-        duration_ms=int((time.monotonic() - started) * 1000),
-    )
     return HuntQueryResult(
         alerts=alerts,
         total=total,
@@ -274,7 +247,6 @@ async def pivot_by_ioc(
     args: PivotByIocArgs,
     session: Session,
     indexer: IndexerClient,
-    audit: AuditEmitter,
 ) -> HuntQueryResult:
     """Tool name: hunt.pivot_by_ioc - preset over hunt_query.
 
@@ -290,18 +262,8 @@ async def pivot_by_ioc(
         size=args.size,
         cursor=args.cursor,
     )
-    result = await hunt_query(
+    return await hunt_query(
         args=hq_args,
         session=session,
         indexer=indexer,
-        audit=audit,
     )
-    audit.emit(
-        session=session,
-        tool="hunt.pivot_by_ioc",
-        args=args.model_dump(exclude_none=True),
-        outcome="ok",
-        result_count=len(result.alerts),
-        duration_ms=0,
-    )
-    return result

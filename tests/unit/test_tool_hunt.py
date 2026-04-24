@@ -144,7 +144,6 @@ async def test_pivot_by_ioc_hash_uses_sha256_field(session, audit, indexer, http
         args=PivotByIocArgs(kind="hash", value="abc123def456", time_range="24h"),
         session=session,
         indexer=indexer,
-        audit=audit,
     )
     assert result.total == 0
 

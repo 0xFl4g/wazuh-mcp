@@ -30,7 +30,6 @@ async def handle(
             args=SearchAlertsArgs(time_range="1h", min_level=10, size=25),
             session=session,
             indexer=indexer,
-            audit=audit,
         )
     except WazuhError as e:
         return make_user_message(f"Triage fetch failed ({e.code}). Retry or check upstream.")

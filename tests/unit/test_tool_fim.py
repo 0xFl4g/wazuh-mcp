@@ -75,7 +75,6 @@ async def test_fim_history_happy(session, audit, indexer, httpx_mock):
         args=FimHistoryArgs(path="/etc/passwd", time_range="24h", size=1),
         session=session,
         indexer=indexer,
-        audit=audit,
     )
     assert result.total == 1
     assert result.events[0].path == "/etc/passwd"
@@ -89,5 +88,4 @@ async def test_fim_changes_rejects_bad_agent_id(session, audit, indexer):
             args=FimChangesArgs(agent_id="not-a-number", time_range="24h"),
             session=session,
             indexer=indexer,
-            audit=audit,
         )

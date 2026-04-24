@@ -79,7 +79,6 @@ async def test_list_vulns_by_agent_happy(session, audit, indexer, httpx_mock):
         args=ListVulnerabilitiesByAgentArgs(agent_id="001", min_severity="High"),
         session=session,
         indexer=indexer,
-        audit=audit,
     )
     assert result.total == 1
     assert result.vulnerabilities[0].id == "CVE-2024-1234"
@@ -92,7 +91,6 @@ async def test_search_vulns_requires_a_filter(session, audit, indexer):
             args=SearchVulnerabilitiesArgs(),
             session=session,
             indexer=indexer,
-            audit=audit,
         )
 
 
@@ -112,7 +110,6 @@ async def test_search_vulns_by_cve(session, audit, indexer, httpx_mock):
         args=SearchVulnerabilitiesArgs(cve_id="CVE-2023-9999"),
         session=session,
         indexer=indexer,
-        audit=audit,
     )
     assert result.vulnerabilities[0].id == "CVE-2023-9999"
     assert result.vulnerabilities[0].severity == "Critical"

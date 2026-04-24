@@ -39,7 +39,6 @@ async def handle(
             args=GetAgentArgs(agent_id=agent_id),
             session=session,
             server_api=server_api,
-            audit=audit,
         )
     except WazuhError as e:
         if e.code == "not_found":
@@ -56,7 +55,6 @@ async def handle(
             args=AlertsByAgentArgs(agent_id=agent_id, time_range="24h", size=25),
             session=session,
             indexer=indexer,
-            audit=audit,
         )
         alerts_block = (
             f"total_in_range={alerts.total}, showing={len(alerts.alerts)}:\n"
@@ -71,7 +69,6 @@ async def handle(
             args=ListVulnerabilitiesByAgentArgs(agent_id=agent_id, size=25),
             session=session,
             indexer=indexer,
-            audit=audit,
         )
         vuln_block = f"total={vulns.total}, showing={len(vulns.vulnerabilities)}:\n" + json.dumps(
             [v.model_dump() for v in vulns.vulnerabilities], indent=2

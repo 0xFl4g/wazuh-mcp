@@ -10,7 +10,8 @@ All non-/mcp routes are public (not behind auth). /mcp is protected.
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable
+import contextlib
+from collections.abc import AsyncIterator, Awaitable, Callable
 from typing import Any
 
 from starlette.applications import Starlette
@@ -21,6 +22,9 @@ from starlette.routing import Mount, Route
 
 from wazuh_mcp.auth.errors import AuthError
 from wazuh_mcp.auth.factory import RequestContext, SessionFactory
+from wazuh_mcp.observability.audit import MultiSinkAuditEmitter
+from wazuh_mcp.observability.instrumentation import instrument_httpx, instrument_starlette
+from wazuh_mcp.observability.metrics import build_metrics_route
 from wazuh_mcp.transport.session_ctx import CURRENT_SESSION, set_current_session
 
 
@@ -143,8 +147,15 @@ def build_asgi_app(
     resource_url: str,
     authorization_server: str,
     ready_fn: Callable[[], bool],
+    audit_emitter: MultiSinkAuditEmitter | None = None,
 ) -> Any:
-    """Compose the full ASGI app: metadata + health + session-protected MCP mount."""
+    """Compose the full ASGI app: metadata + health + /metrics + session-protected MCP mount.
+
+    M4a additions:
+      * /metrics route (unauthenticated, Prom-format).
+      * audit_emitter.start()/stop() are hung off the composed lifespan.
+      * Starlette + httpx auto-instrumentation are attached here.
+    """
     mcp_streamable = mcp_app.streamable_http_app()
 
     async def _readyz(request: Request) -> Response:
@@ -159,6 +170,22 @@ def build_asgi_app(
         "scopes_supported": [],
     }
     handler = _metadata_handler_factory(metadata)
+
+    # Compose lifespans: FastMCP's session-manager lifespan MUST run (see
+    # "Task group is not initialized" note below), AND the audit emitter's
+    # background drain tasks must start/stop alongside the app.
+    _mcp_lifespan = mcp_streamable.router.lifespan_context
+
+    @contextlib.asynccontextmanager
+    async def _lifespan(app: Starlette) -> AsyncIterator[None]:
+        async with _mcp_lifespan(app):
+            if audit_emitter is not None:
+                await audit_emitter.start()
+            try:
+                yield
+            finally:
+                if audit_emitter is not None:
+                    await audit_emitter.stop()
 
     # FastMCP's streamable_http_app() exposes its handler at `/mcp`, so we
     # mount it at the root. The explicit Routes above are declared first
@@ -175,10 +202,16 @@ def build_asgi_app(
             ),
             Route("/healthz", _healthz, methods=["GET"]),
             Route("/readyz", _readyz, methods=["GET"]),
+            build_metrics_route(),
             Mount("/", app=mcp_streamable),
         ],
-        lifespan=mcp_streamable.router.lifespan_context,
+        lifespan=_lifespan,
     )
+
+    # OTel instrumentation — starlette + outbound httpx calls from the server.
+    # Both helpers are idempotent; calling them in test loops is safe.
+    instrument_starlette(base)
+    instrument_httpx()
 
     return SessionMiddleware(
         base,

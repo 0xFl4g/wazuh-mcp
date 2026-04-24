@@ -90,7 +90,6 @@ async def test_get_mitre_technique_happy(session, audit, server_api, httpx_mock)
         args=GetMitreTechniqueArgs(technique_id="T1110.001"),
         session=session,
         server_api=server_api,
-        audit=audit,
     )
     assert result.technique.id == "T1110.001"
 
@@ -102,7 +101,6 @@ async def test_get_mitre_technique_rejects_bad_id(session, audit, server_api):
             args=GetMitreTechniqueArgs(technique_id="not-a-technique"),
             session=session,
             server_api=server_api,
-            audit=audit,
         )
 
 
@@ -118,7 +116,6 @@ async def test_get_mitre_technique_not_found(session, audit, server_api, httpx_m
             args=GetMitreTechniqueArgs(technique_id="T9999"),
             session=session,
             server_api=server_api,
-            audit=audit,
         )
     assert exc_info.value.code == "not_found"
 
@@ -130,5 +127,4 @@ async def test_search_mitre_requires_a_filter(session, audit, server_api):
             args=SearchMitreArgs(),
             session=session,
             server_api=server_api,
-            audit=audit,
         )

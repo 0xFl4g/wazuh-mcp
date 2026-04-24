@@ -6,9 +6,13 @@ import io
 
 from mcp.server.fastmcp import FastMCP
 
+from wazuh_mcp.auth.session import Session
 from wazuh_mcp.observability.audit import AuditEmitter
 from wazuh_mcp.observability.sinks.stream import StderrSink
+from wazuh_mcp.rate_limit.limiter import InProcessRateLimiter
+from wazuh_mcp.rbac.policy import effective_allowlist_for
 from wazuh_mcp.server import _register_everything
+from wazuh_mcp.tenancy.m4_config import RateLimitConfig
 
 
 class _StubPool:
@@ -21,6 +25,14 @@ class _StubPool:
         return self._client
 
 
+def _policy(_session: Session) -> dict[str, list[str]]:
+    return effective_allowlist_for(tenant_override=None)
+
+
+def _limiter() -> InProcessRateLimiter:
+    return InProcessRateLimiter(default=RateLimitConfig())
+
+
 def test_every_m3_tool_is_registered() -> None:
     mcp_app = FastMCP(name="test")
     audit = AuditEmitter(sinks=[StderrSink(stream=io.StringIO())])
@@ -29,6 +41,8 @@ def test_every_m3_tool_is_registered() -> None:
         indexer_pool=_StubPool(),
         server_api_pool=_StubPool(),
         audit_emitter=audit,
+        limiter=_limiter(),
+        rbac_policy=_policy,
     )
     tools = mcp_app._tool_manager.list_tools()
     names = {t.name for t in tools}
@@ -63,6 +77,8 @@ def test_every_m3_resource_template_is_registered() -> None:
         indexer_pool=_StubPool(),
         server_api_pool=_StubPool(),
         audit_emitter=audit,
+        limiter=_limiter(),
+        rbac_policy=_policy,
     )
     templates = mcp_app._resource_manager.list_templates()
     uris = {t.uri_template for t in templates}
@@ -83,6 +99,8 @@ def test_every_m3_prompt_is_registered() -> None:
         indexer_pool=_StubPool(),
         server_api_pool=_StubPool(),
         audit_emitter=audit,
+        limiter=_limiter(),
+        rbac_policy=_policy,
     )
     prompts = mcp_app._prompt_manager.list_prompts()
     names = {p.name for p in prompts}
@@ -99,6 +117,8 @@ def test_all_tools_carry_toolset_meta() -> None:
         indexer_pool=_StubPool(),
         server_api_pool=_StubPool(),
         audit_emitter=audit,
+        limiter=_limiter(),
+        rbac_policy=_policy,
     )
     for tool in mcp_app._tool_manager.list_tools():
         meta = getattr(tool, "meta", None) or {}

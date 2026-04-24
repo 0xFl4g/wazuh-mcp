@@ -22,7 +22,7 @@ tenants:
     indexer_url: https://wazuh.acme.test:9200
     verify_tls: false
     ca_bundle_path: null
-    default_rbac_role: soc_analyst
+    default_rbac_role: admin
 """.strip()
     )
     (tmp_path / "secrets.yaml").write_text(
