@@ -48,6 +48,21 @@ for _ in $(seq 1 30); do
     sleep 2
 done
 
+echo "[bootstrap] waiting for wazuh-manager Server API..."
+for _ in $(seq 1 40); do
+    if curl -sfku wazuh-wui:MCPmcp12345! \
+        "https://localhost:55000/security/user/authenticate?raw=true" \
+        > /dev/null 2>&1; then
+        echo "[bootstrap] wazuh-manager API ready."
+        break
+    fi
+    sleep 10
+done
+
+# seed_alerts.py registers agent 001 + creates test-group via the
+# manager API, so it must run AFTER the manager API responds. Pre-this
+# move it ran during the manager's first ~30s of boot and the
+# /agents POST timed out under load.
 echo "[bootstrap] seeding synthetic alerts..."
 uv run python "$(dirname "$0")/seed_alerts.py"
 
@@ -59,17 +74,6 @@ for _ in $(seq 1 60); do
         break
     fi
     sleep 5
-done
-
-echo "[bootstrap] waiting for wazuh-manager Server API..."
-for _ in $(seq 1 40); do
-    if curl -sfku wazuh-wui:MCPmcp12345! \
-        "https://localhost:55000/security/user/authenticate?raw=true" \
-        > /dev/null 2>&1; then
-        echo "[bootstrap] wazuh-manager API ready."
-        break
-    fi
-    sleep 10
 done
 
 # wazuh-agent container auto-enrols against the manager via authd; wait
