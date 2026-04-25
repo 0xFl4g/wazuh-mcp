@@ -74,6 +74,10 @@ done
 
 # ---------- TEMPORARY: probe Wazuh 4.9 API for skip-marked tests ----------
 # Remove these probes once the create_rule + MITRE endpoints are mapped.
+# `head -c` closes the pipe early; curl gets SIGPIPE / exit 23 and the
+# top-level `set -euo pipefail` kills bootstrap. Drop pipefail just for
+# the probe block so a non-zero curl from a closed pipe is tolerated.
+set +e +o pipefail
 TOKEN=$(curl -sku wazuh-wui:MCPmcp12345! \
     "https://localhost:55000/security/user/authenticate?raw=true" 2>/dev/null || true)
 if [ -n "$TOKEN" ]; then
@@ -132,6 +136,7 @@ if [ -n "$TOKEN" ]; then
         | head -c 800
     echo
 fi
+set -e -o pipefail
 # ---------- END TEMPORARY PROBES ----------
 
 echo "[bootstrap] ready. Run: uv run pytest -m integration"
