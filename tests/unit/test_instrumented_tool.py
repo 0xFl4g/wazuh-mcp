@@ -464,17 +464,18 @@ def test_args_model_surfaces_typed_fields_to_fastmcp_introspection() -> None:
     """
     from mcp.server.fastmcp.utilities.func_metadata import func_metadata
 
-    from wazuh_mcp.tools.alerts import SearchAlertsArgs
-    from wazuh_mcp.tools.write import CreateRuleArgs, IsolateAgentArgs
+    from wazuh_mcp.tools.alerts import SearchAlertsArgs, SearchAlertsResult
+    from wazuh_mcp.tools.write import CreateRuleArgs, IsolateAgentArgs, WriteResult
 
-    for tool_name, model, expected in [
+    for tool_name, args, result, expected in [
         (
             "alerts.search_alerts",
             SearchAlertsArgs,
+            SearchAlertsResult,
             {"time_range", "min_level", "agent_id", "size", "cursor"},
         ),
-        ("write.isolate_agent", IsolateAgentArgs, {"agent_id", "confirm"}),
-        ("write.create_rule", CreateRuleArgs, {"rule", "confirm"}),
+        ("write.isolate_agent", IsolateAgentArgs, WriteResult, {"agent_id", "confirm"}),
+        ("write.create_rule", CreateRuleArgs, WriteResult, {"rule", "confirm"}),
     ]:
         wrapped = instrumented_tool(
             tool_name=tool_name,
@@ -482,11 +483,21 @@ def test_args_model_surfaces_typed_fields_to_fastmcp_introspection() -> None:
             rbac_policy=_policy,
             limiter=_limiter(),
             audit=MultiSinkAuditEmitter(sinks=[StderrSink(stream=io.StringIO())]),
-            args_model=model,
+            args_model=args,
+            result_model=result,
         )
         meta = func_metadata(wrapped)
         actual = set(meta.arg_model.model_fields.keys())
         assert actual == expected, (
             f"{tool_name}: FastMCP saw fields {actual!r}, expected {expected!r} "
             f"(if this is just {{'kwargs'}} the decorator regressed)"
+        )
+        # Pin structured-output detection too: ``result_model`` must flow
+        # through to ``__signature__.return_annotation`` so FastMCP emits
+        # ``CallToolResult.structuredContent`` for typed clients.
+        assert meta.output_model is result, (
+            f"{tool_name}: FastMCP output_model={meta.output_model!r}, expected {result!r}"
+        )
+        assert meta.output_schema is not None, (
+            f"{tool_name}: missing output_schema (structuredContent broken)"
         )

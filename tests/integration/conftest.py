@@ -67,6 +67,8 @@ tenants:
 local:
   indexer_user: admin
   indexer_password: admin
+  server_api_user: wazuh-wui
+  server_api_password: MCPmcp12345!
 """.strip()
     )
     (cfg_dir / "api_keys.yaml").write_text("api_keys: []\n")

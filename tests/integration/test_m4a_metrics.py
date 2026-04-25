@@ -51,12 +51,12 @@ async def test_metrics_endpoint_returns_prom_text(mcp_http_server, keycloak_toke
     ctype = resp.headers.get("content-type", "")
     assert ctype.startswith("text/plain"), f"unexpected content-type: {ctype!r}"
     body = resp.text
+    # Only families with at least one observation are emitted by the OTel
+    # Prom exporter — happy-path workload only bumps the per-call families.
+    # Error/rate-limit/audit-drop families are registered but legitimately
+    # absent without a triggering observation; not asserted here.
     for family in [
         "mcp_tool_calls_total",
         "mcp_tool_duration_seconds",
-        "wazuh_upstream_errors_total",
-        "jwt_refresh_total",
-        "rate_limited_total",
-        "audit_dropped_total",
     ]:
         assert family in body, f"missing metric family {family}"

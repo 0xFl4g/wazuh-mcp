@@ -34,9 +34,9 @@ async def test_list_resource_templates_returns_three(mcp_http_server, keycloak_t
 
     uris = {t.uriTemplate for t in templates.resourceTemplates}
     assert uris == {
-        "wazuh://rules/{id}",
-        "wazuh://mitre/technique/{id}",
-        "wazuh://agents/{id}/config",
+        "wazuh://rules/{rule_id}",
+        "wazuh://mitre/technique/{technique_id}",
+        "wazuh://agents/{agent_id}/config",
     }
 
 

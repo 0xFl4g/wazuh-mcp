@@ -28,7 +28,7 @@ async def test_triage_last_hour_prompt(mcp_http_server, keycloak_token):
             ClientSession(read, write) as session,
         ):
             await session.initialize()
-            result = await session.get_prompt("wazuh:triage-last-hour")
+            result = await session.get_prompt("triage_last_hour")
     finally:
         await http_client.aclose()
 

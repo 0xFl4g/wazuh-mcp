@@ -44,7 +44,10 @@ from wazuh_mcp.transport.session_ctx import current_session
 from wazuh_mcp.wazuh.errors import WazuhError
 
 
-def _signature_from_args_model(args_model: type[BaseModel]) -> inspect.Signature:
+def _signature_from_args_model(
+    args_model: type[BaseModel],
+    return_annotation: Any = inspect.Signature.empty,
+) -> inspect.Signature:
     """Build a flat keyword-only ``Signature`` from a Pydantic Args model.
 
     FastMCP's ``func_metadata`` introspects the wrapped tool function via
@@ -59,6 +62,11 @@ def _signature_from_args_model(args_model: type[BaseModel]) -> inspect.Signature
     ``__wrapped__`` or doing parameter inspection. Fields are surfaced
     keyword-only with their ``Annotated[T, FieldInfo(...)]`` so descriptions
     and constraints land in the JSON Schema FastMCP exposes to clients.
+
+    ``return_annotation`` is forwarded so FastMCP's structured-output
+    detection sees the real Pydantic result model (e.g. ``SearchAlertsResult``)
+    and emits ``CallToolResult.structuredContent`` for clients that want
+    typed payloads instead of unstructured text.
     """
     hints = get_type_hints(args_model, include_extras=True)
     params: list[inspect.Parameter] = []
@@ -75,7 +83,7 @@ def _signature_from_args_model(args_model: type[BaseModel]) -> inspect.Signature
                 annotation=annotation,
             )
         )
-    return inspect.Signature(parameters=params)
+    return inspect.Signature(parameters=params, return_annotation=return_annotation)
 
 
 def instrumented_tool(
@@ -86,6 +94,7 @@ def instrumented_tool(
     limiter: RateLimiter,
     audit: MultiSinkAuditEmitter,
     args_model: type[BaseModel] | None = None,
+    result_model: type[BaseModel] | None = None,
 ) -> Callable[..., Awaitable[Any]]:
     tracer = trace.get_tracer("wazuh_mcp")
     counters = m4_counters()
@@ -329,5 +338,15 @@ def instrumented_tool(
     wrapped = functools.wraps(handler)(_inner)
     wrapped.__name__ = f"instrumented_{tool_name.replace('.', '_')}"
     if args_model is not None:
-        wrapped.__signature__ = _signature_from_args_model(args_model)  # ty: ignore[unresolved-attribute]
+        # ``result_model`` is passed explicitly rather than read from
+        # ``handler``'s return annotation: under PEP 563 (which the wiring
+        # module enables) ``inspect.signature(handler).return_annotation``
+        # is an unresolved string like ``"SearchAlertsResult"``, and the
+        # locally-imported class isn't on the handler's module globals so
+        # ``get_type_hints`` can't resolve it either. The caller knows
+        # the class, so it just hands it in.
+        return_annotation = result_model if result_model is not None else inspect.Signature.empty
+        wrapped.__signature__ = _signature_from_args_model(  # ty: ignore[unresolved-attribute]
+            args_model, return_annotation=return_annotation
+        )
     return wrapped
