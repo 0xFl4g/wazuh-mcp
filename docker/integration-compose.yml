@@ -83,25 +83,6 @@ services:
       retries: 40
       start_period: 120s
 
-  # Lightweight wazuh-agent so M4b write tools (write.isolate_agent,
-  # write.restart_agent, write.run_active_response) have a connected
-  # target. Auto-enrolls against wazuh-manager via authd (UDP 1515) on
-  # boot; the manager assigns id=001 if no other agents are registered.
-  # Without this container the manager accepts the API call but the
-  # active-response/restart command queue has no peer to deliver to and
-  # the API returns upstream_error.
-  wazuh-agent:
-    image: wazuh/wazuh-agent:4.9.0
-    platform: linux/amd64
-    hostname: web-01
-    depends_on:
-      wazuh-manager:
-        condition: service_healthy
-    environment:
-      - WAZUH_MANAGER=wazuh-manager
-      - WAZUH_AGENT_NAME=web-01
-      - WAZUH_REGISTRATION_SERVER=wazuh-manager
-
   keycloak:
     image: quay.io/keycloak/keycloak:26.0
     hostname: keycloak

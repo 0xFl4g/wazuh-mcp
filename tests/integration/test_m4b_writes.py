@@ -254,6 +254,14 @@ async def raw_indexer_client() -> AsyncIterator[_RawIndexerClient]:
         await inner.aclose()
 
 
+@pytest.mark.skip(
+    reason=(
+        "needs a connected wazuh-agent process; Wazuh doesn't ship an "
+        "official wazuh-agent Docker image, so the integration compose "
+        "registers agent 001 via the API but no peer answers "
+        "active-response or restart commands. Tracked as M4c fixture work."
+    )
+)
 async def test_isolate_then_restart_agent_roundtrip(mcp_http_server_writes, keycloak_token) -> None:
     """Happy path: isolate, check audit events landed, restart, verify both ok."""
     async with _mcp_session(MCP_WRITES_URL, keycloak_token()) as session:
