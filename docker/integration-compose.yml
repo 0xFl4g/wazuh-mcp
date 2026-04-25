@@ -88,6 +88,14 @@ services:
   # enrols against wazuh-manager via authd and stays connected so M4b
   # write.isolate_agent / write.restart_agent / write.run_active_response
   # have a peer to receive commands.
+  #
+  # NOTE: ``depends_on`` here uses ``service_started`` (not
+  # ``service_healthy``) deliberately. ``service_healthy`` makes
+  # ``docker compose up -d`` block at the manager's healthcheck — but
+  # the manager can't become healthy until bootstrap.sh runs
+  # securityadmin against the indexer (post-up step). The agent's own
+  # entrypoint polls authd until it's reachable, so starting alongside
+  # the manager and waiting from inside is safe.
   wazuh-agent:
     build:
       context: ./wazuh-agent
@@ -95,7 +103,7 @@ services:
     hostname: web-01
     depends_on:
       wazuh-manager:
-        condition: service_healthy
+        condition: service_started
 
   keycloak:
     image: quay.io/keycloak/keycloak:26.0
