@@ -44,10 +44,15 @@ async def client(httpx_mock) -> AsyncIterator[ServerApiClient]:
 
 
 @pytest.mark.asyncio
-async def test_isolate_agent_posts_active_response(client, httpx_mock) -> None:
+async def test_isolate_agent_puts_active_response(client, httpx_mock) -> None:
+    """Wazuh 4.9: ``PUT /active-response?agents_list=<id>`` with the
+    command in the body. POST returns 405."""
     httpx_mock.add_response(
-        url=httpx.URL("https://wazuh.example:55000/active-response", params={"run_as": "alice"}),
-        method="POST",
+        url=httpx.URL(
+            "https://wazuh.example:55000/active-response",
+            params={"agents_list": "003", "run_as": "alice"},
+        ),
+        method="PUT",
         json={"data": {"affected_items": ["003"]}},
     )
     resp = await client.isolate_agent(agent_id="003", run_as="alice")
@@ -55,10 +60,12 @@ async def test_isolate_agent_posts_active_response(client, httpx_mock) -> None:
     active_response_requests = [
         r for r in httpx_mock.get_requests() if r.url.path == "/active-response"
     ]
-    assert active_response_requests, "expected a POST to /active-response"
-    body = active_response_requests[-1].read()
+    assert active_response_requests, "expected a PUT to /active-response"
+    sent = active_response_requests[-1]
+    assert sent.method == "PUT"
+    assert sent.url.params["agents_list"] == "003"
+    body = sent.read()
     assert b'"command":"isolate"' in body or b'"command": "isolate"' in body
-    assert b'"agents":["003"]' in body or b'"agents": ["003"]' in body
 
 
 @pytest.mark.asyncio
@@ -135,13 +142,13 @@ async def test_upload_rule_file_puts_raw_xml(client, httpx_mock) -> None:
 
 
 @pytest.mark.asyncio
-async def test_run_active_response_posts_with_command_and_args(client, httpx_mock) -> None:
+async def test_run_active_response_puts_with_command_and_args(client, httpx_mock) -> None:
     httpx_mock.add_response(
         url=httpx.URL(
             "https://wazuh.example:55000/active-response",
-            params={"run_as": "alice"},
+            params={"agents_list": "003", "run_as": "alice"},
         ),
-        method="POST",
+        method="PUT",
         json={"data": {"affected_items": ["003"]}},
     )
     resp = await client.run_active_response(
@@ -154,7 +161,10 @@ async def test_run_active_response_posts_with_command_and_args(client, httpx_moc
     active_response_requests = [
         r for r in httpx_mock.get_requests() if r.url.path == "/active-response"
     ]
-    assert active_response_requests, "expected a POST to /active-response"
-    body = active_response_requests[-1].read()
+    assert active_response_requests, "expected a PUT to /active-response"
+    sent = active_response_requests[-1]
+    assert sent.method == "PUT"
+    assert sent.url.params["agents_list"] == "003"
+    body = sent.read()
     assert b'"command":"block-ip"' in body or b'"command": "block-ip"' in body
     assert b'"srcip":"10.0.0.1"' in body or b'"srcip": "10.0.0.1"' in body

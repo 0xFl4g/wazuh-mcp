@@ -107,37 +107,4 @@ if [ "$agent_connected" != "yes" ]; then
     echo "[bootstrap] wazuh-agent did NOT report as active within timeout — active-response/restart tests will likely fail."
 fi
 
-# ---------- TEMP probe: active-response body shapes ----------
-set +e +o pipefail
-TOKEN=$(curl -sku wazuh-wui:MCPmcp12345! \
-    "https://localhost:55000/security/user/authenticate?raw=true" 2>/dev/null || true)
-if [ -n "$TOKEN" ] && [ "$agent_connected" = "yes" ]; then
-    echo "[probe] === AR: POST /active-response (body: command+agents) — current code shape ==="
-    curl -sk -w "\n[probe] http=%{http_code}\n" -X POST \
-        -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
-        --data '{"command":"isolate","agents":["001"]}' \
-        "https://localhost:55000/active-response" | head -c 800
-    echo
-    echo "[probe] === AR: POST /active-response?agents_list=001 (body: command only) ==="
-    curl -sk -w "\n[probe] http=%{http_code}\n" -X POST \
-        -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
-        --data '{"command":"isolate"}' \
-        "https://localhost:55000/active-response?agents_list=001" | head -c 800
-    echo
-    echo "[probe] === AR: POST /active-response?agents_list=001 (body: command bang prefix) ==="
-    curl -sk -w "\n[probe] http=%{http_code}\n" -X POST \
-        -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
-        --data '{"command":"!isolate"}' \
-        "https://localhost:55000/active-response?agents_list=001" | head -c 800
-    echo
-    echo "[probe] === AR: GET /openapi.json paths matching active-response ==="
-    curl -sk -H "Authorization: Bearer $TOKEN" \
-        "https://localhost:55000/openapi.json" 2>/dev/null \
-        | python3 -c "import sys, json; spec=json.load(sys.stdin); [print(m, p, list((spec['paths'][p][m].get('parameters', []))[:5]), spec['paths'][p][m].get('requestBody', {}).get('content', {})) for p, ops in spec.get('paths', {}).items() if 'active-response' in p for m in ops]" \
-        2>/dev/null || echo "(openapi.json unreachable or unparseable)"
-    echo
-fi
-set -e -o pipefail
-# ---------- END TEMP probe ----------
-
 echo "[bootstrap] ready. Run: uv run pytest -m integration"

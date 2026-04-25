@@ -165,11 +165,13 @@ class ServerApiClient:
     # ---- M4b writes ----
 
     async def isolate_agent(self, *, agent_id: str, run_as: str | None = None) -> dict[str, Any]:
-        """Wazuh ships an 'isolate' active-response command by default on managed
-        agents. This is a thin wrapper over POST /active-response."""
-        return await self.post(
+        """Wazuh 4.9 active-response endpoint is ``PUT /active-response`` with
+        the target agents in the ``agents_list`` query param and the command
+        in the JSON body. (POST returns 405; older docs show POST shape.)"""
+        return await self.put(
             "/active-response",
-            json={"command": "isolate", "agents": [agent_id]},
+            json={"command": "isolate"},
+            params={"agents_list": agent_id},
             run_as=run_as,
         )
 
@@ -214,11 +216,16 @@ class ServerApiClient:
         custom_args: dict[str, Any] | None = None,
         run_as: str | None = None,
     ) -> dict[str, Any]:
-        body: dict[str, Any] = {"command": command, "agents": [agent_id]}
+        # Wazuh 4.9: PUT /active-response with agents_list query param.
+        body: dict[str, Any] = {"command": command}
         if custom_args:
-            # Wazuh expects custom fields as top-level keys in the body.
             body.update(custom_args)
-        return await self.post("/active-response", json=body, run_as=run_as)
+        return await self.put(
+            "/active-response",
+            json=body,
+            params={"agents_list": agent_id},
+            run_as=run_as,
+        )
 
     # ---- Internal ----
 
