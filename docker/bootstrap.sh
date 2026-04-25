@@ -78,19 +78,33 @@ done
 
 # wazuh-agent container auto-enrols against the manager via authd; wait
 # until the manager reports it as active so M4b active-response/restart
-# tests have a connected peer. ~2 min cap — failure surfaces in CI as a
-# clear "agent never went active" rather than a flaky stall.
+# tests have a connected peer. Bounded at ~2 min; if it never goes
+# active, downstream tests that need a connected agent will surface
+# specific errors rather than just stalling.
 echo "[bootstrap] waiting for wazuh-agent to enrol + connect..."
 TOKEN=$(curl -sku wazuh-wui:MCPmcp12345! \
     "https://localhost:55000/security/user/authenticate?raw=true" 2>/dev/null || true)
+agent_connected="no"
 for _ in $(seq 1 40); do
-    if [ -n "$TOKEN" ] && curl -sk -H "Authorization: Bearer $TOKEN" \
-        "https://localhost:55000/agents?status=active" 2>/dev/null \
-        | grep -q '"id":"001"'; then
-        echo "[bootstrap] wazuh-agent connected as id=001."
-        break
+    if [ -n "$TOKEN" ]; then
+        # Use python to parse the JSON properly — Wazuh's response
+        # interleaves whitespace inconsistently so a static grep is
+        # fragile. ``status=active`` with ``agents_list=001`` returns
+        # ``total_affected_items: 1`` only if 001 is actually active.
+        active=$(curl -sk -H "Authorization: Bearer $TOKEN" \
+            "https://localhost:55000/agents?agents_list=001&status=active" 2>/dev/null \
+            | python3 -c "import sys, json; d=json.load(sys.stdin); print((d.get('data') or {}).get('total_affected_items', 0))" \
+            2>/dev/null || echo 0)
+        if [ "$active" = "1" ]; then
+            echo "[bootstrap] wazuh-agent connected as id=001."
+            agent_connected="yes"
+            break
+        fi
     fi
     sleep 5
 done
+if [ "$agent_connected" != "yes" ]; then
+    echo "[bootstrap] wazuh-agent did NOT report as active within timeout — active-response/restart tests will likely fail."
+fi
 
 echo "[bootstrap] ready. Run: uv run pytest -m integration"
