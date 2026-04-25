@@ -72,4 +72,21 @@ for _ in $(seq 1 40); do
     sleep 10
 done
 
+# wazuh-agent container auto-enrols against the manager via authd; wait
+# until the manager reports it as active so M4b active-response/restart
+# tests have a connected peer. ~2 min cap — failure surfaces in CI as a
+# clear "agent never went active" rather than a flaky stall.
+echo "[bootstrap] waiting for wazuh-agent to enrol + connect..."
+TOKEN=$(curl -sku wazuh-wui:MCPmcp12345! \
+    "https://localhost:55000/security/user/authenticate?raw=true" 2>/dev/null || true)
+for _ in $(seq 1 40); do
+    if [ -n "$TOKEN" ] && curl -sk -H "Authorization: Bearer $TOKEN" \
+        "https://localhost:55000/agents?status=active" 2>/dev/null \
+        | grep -q '"id":"001"'; then
+        echo "[bootstrap] wazuh-agent connected as id=001."
+        break
+    fi
+    sleep 5
+done
+
 echo "[bootstrap] ready. Run: uv run pytest -m integration"

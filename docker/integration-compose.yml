@@ -83,6 +83,20 @@ services:
       retries: 40
       start_period: 120s
 
+  # Custom-built wazuh-agent: Wazuh doesn't publish an agent image, so we
+  # roll one from the .deb package (see ./wazuh-agent/Dockerfile). Auto-
+  # enrols against wazuh-manager via authd and stays connected so M4b
+  # write.isolate_agent / write.restart_agent / write.run_active_response
+  # have a peer to receive commands.
+  wazuh-agent:
+    build:
+      context: ./wazuh-agent
+    platform: linux/amd64
+    hostname: web-01
+    depends_on:
+      wazuh-manager:
+        condition: service_healthy
+
   keycloak:
     image: quay.io/keycloak/keycloak:26.0
     hostname: keycloak
