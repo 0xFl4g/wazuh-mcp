@@ -127,7 +127,7 @@ async def test_investigate_alert_returns_context_loaded_message(
         server_api=server_api,
         audit=audit,
     )
-    text = out["messages"][0]["content"]["text"]
+    text = out["content"]["text"]
     assert "abc" in text
     assert "web-01" in text
 
@@ -148,7 +148,7 @@ async def test_investigate_alert_not_found_returns_message_not_raises(
         server_api=server_api,
         audit=audit,
     )
-    text = out["messages"][0]["content"]["text"]
+    text = out["content"]["text"]
     assert "not found" in text.lower()
 
 
@@ -178,7 +178,7 @@ async def test_triage_last_hour_returns_pre_loaded_results(session, audit, index
         },
     )
     out = await triage_handle(session=session, indexer=indexer, audit=audit)
-    text = out["messages"][0]["content"]["text"]
+    text = out["content"]["text"]
     assert "TOTAL IN RANGE: 1" in text
 
 
@@ -196,5 +196,5 @@ async def test_agent_posture_not_found(session, audit, indexer, server_api, http
         server_api=server_api,
         audit=audit,
     )
-    text = out["messages"][0]["content"]["text"]
+    text = out["content"]["text"]
     assert "not found" in text.lower()
