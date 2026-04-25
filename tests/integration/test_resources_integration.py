@@ -41,17 +41,6 @@ async def test_list_resource_templates_returns_three(mcp_http_server, keycloak_t
 
 
 @pytest.mark.integration
-@pytest.mark.skip(
-    reason=(
-        "Wazuh manager fixture has no MITRE technique data populated — "
-        "GET /mitre/techniques?q=external_id=T1110 returns empty. The "
-        "stock wazuh/wazuh-manager:4.9 image expects MITRE data to be "
-        "loaded (often via a separate provisioning step) and the integration "
-        "compose doesn't perform it. Tracked as M4c fixture work; the unit "
-        "test in test_tool_mitre pins the wire query format so handler-side "
-        "regressions still light up."
-    )
-)
 async def test_read_mitre_technique(mcp_http_server, keycloak_token):
     """T1110 is in every Wazuh-bundled ATT&CK dataset."""
     import httpx as _httpx

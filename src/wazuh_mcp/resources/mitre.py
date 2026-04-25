@@ -25,9 +25,12 @@ async def read_mitre_technique(
         raise ValueError("invalid technique_id")
 
     try:
+        # Wazuh stores both an internal ``id`` (UUID) and ``external_id``
+        # (the human ATT&CK identifier ``T1110.001``). Query by external_id
+        # — ``q=id=T1110`` matches no rows.
         body = await server_api.get(
             "/mitre/techniques",
-            params={"q": f"id={technique_id}"},
+            params={"q": f"external_id={technique_id}"},
             run_as=session.wazuh_user,
         )
     except WazuhError as e:

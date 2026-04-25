@@ -95,33 +95,41 @@ if [ -n "$TOKEN" ]; then
     echo
 
     XML='<group name="wazuh-mcp"><rule id="100100" level="5"><description>probe</description></rule></group>'
-    echo "[probe] === RULE: PUT /manager/files?path=etc/rules/probe.xml&overwrite=true ==="
+
+    echo "[probe] === DISCOVERY: GET /rules/files?limit=3 (what file paths exist?) ==="
+    curl -sk -H "Authorization: Bearer $TOKEN" \
+        "https://localhost:55000/rules/files?limit=3" | head -c 1500
+    echo
+    echo "[probe] === DISCOVERY: GET /manager/api/config (does manager_files exist?) ==="
+    curl -sk -H "Authorization: Bearer $TOKEN" \
+        "https://localhost:55000/manager/api/config" | head -c 800
+    echo
+    echo "[probe] === DISCOVERY: GET /openapi.json (probe-able endpoints with 'files' in name) ==="
+    curl -sk -H "Authorization: Bearer $TOKEN" \
+        "https://localhost:55000/openapi.json" 2>/dev/null \
+        | python3 -c "import sys, json; spec=json.load(sys.stdin); [print(m, p) for p, ops in spec.get('paths', {}).items() if 'files' in p.lower() for m in ops]" \
+        2>/dev/null || echo "(openapi.json unreachable or unparseable)"
+    echo
+    echo "[probe] === RULE: PUT /manager/files?path=etc/rules/probe.xml&overwrite=true (current code) ==="
     curl -sk -w "\n[probe] http=%{http_code}\n" -X PUT \
         -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/xml" \
         --data-raw "$XML" \
         "https://localhost:55000/manager/files?path=etc/rules/probe.xml&overwrite=true" \
-        | head -c 1500
+        | head -c 800
     echo
-    echo "[probe] === RULE: PUT /manager/files?path=ruleset/rules/probe.xml&overwrite=true ==="
+    echo "[probe] === RULE: PUT /rules/files/probe.xml?overwrite=true ==="
     curl -sk -w "\n[probe] http=%{http_code}\n" -X PUT \
         -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/xml" \
         --data-raw "$XML" \
-        "https://localhost:55000/manager/files?path=ruleset/rules/probe.xml&overwrite=true" \
-        | head -c 1500
+        "https://localhost:55000/rules/files/probe.xml?overwrite=true" \
+        | head -c 800
     echo
-    echo "[probe] === RULE: PUT /manager/files/etc/rules/probe.xml?overwrite=true ==="
+    echo "[probe] === RULE: PUT /rules/files/probe.xml?overwrite=true&relative_dirname=etc/rules ==="
     curl -sk -w "\n[probe] http=%{http_code}\n" -X PUT \
-        -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/xml" \
+        -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/octet-stream" \
         --data-raw "$XML" \
-        "https://localhost:55000/manager/files/etc/rules/probe.xml?overwrite=true" \
-        | head -c 1500
-    echo
-    echo "[probe] === RULE: PUT /manager/files/rules/probe.xml?overwrite=true (legacy) ==="
-    curl -sk -w "\n[probe] http=%{http_code}\n" -X PUT \
-        -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/xml" \
-        --data-raw "$XML" \
-        "https://localhost:55000/manager/files/rules/probe.xml?overwrite=true" \
-        | head -c 1500
+        "https://localhost:55000/rules/files/probe.xml?overwrite=true&relative_dirname=etc/rules" \
+        | head -c 800
     echo
 fi
 # ---------- END TEMPORARY PROBES ----------
