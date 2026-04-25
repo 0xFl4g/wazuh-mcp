@@ -192,18 +192,17 @@ class ServerApiClient:
         """Upload a per-rule XML file. The manager must be restarted out-of-band
         for the ruleset to reload.
 
-        Wazuh 4.x exposes file uploads via ``PUT /manager/files`` with the
-        target path passed as a ``path`` query parameter relative to
-        ``/var/ossec/`` — for user rules that's ``etc/rules/<filename>``.
-        Pre-4.x APIs put the path in the URL; 4.9 returns 404 on that
-        shape and surfaced the regression once integration CI started
-        running again.
+        Wazuh 4.9 exposes user-rule uploads via
+        ``PUT /rules/files/<filename>?overwrite=true``. The body is the raw
+        XML but the API requires ``Content-Type: application/octet-stream``
+        — ``application/xml`` returns 415. ``/manager/files``-rooted shapes
+        from older Wazuh docs all 404 in 4.9.
         """
         return await self.put_raw(
-            "/manager/files",
+            f"/rules/files/{filename}",
             content=xml,
-            content_type="application/xml",
-            params={"path": f"etc/rules/{filename}", "overwrite": "true"},
+            content_type="application/octet-stream",
+            params={"overwrite": "true"},
             run_as=run_as,
         )
 
