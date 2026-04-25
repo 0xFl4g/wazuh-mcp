@@ -21,6 +21,7 @@ import mcp.types as _mt
 import yaml
 from mcp.server.fastmcp import FastMCP
 from mcp.server.fastmcp.exceptions import ToolError
+from pydantic import BaseModel
 
 from wazuh_mcp.auth.api_key import ApiKeySessionFactory
 from wazuh_mcp.auth.api_key_store import YamlApiKeyStore
@@ -505,6 +506,7 @@ def _register_everything(
         handler: Callable[..., Any],
         description: str,
         meta: dict[str, Any],
+        args_model: type[BaseModel],
     ) -> None:
         wrapped = instrumented_tool(
             tool_name=tool_name,
@@ -512,6 +514,7 @@ def _register_everything(
             rbac_policy=rbac_policy,
             limiter=limiter,
             audit=audit_emitter,
+            args_model=args_model,
         )
         mcp_app.tool(name=tool_name, description=description, meta=meta)(wrapped)
 
@@ -543,6 +546,7 @@ def _register_everything(
             "response to continue."
         ),
         meta={"toolset": "alerts"},
+        args_model=SearchAlertsArgs,
     )
 
     async def _get_alert_inner(**kwargs: Any) -> Any:
@@ -556,6 +560,7 @@ def _register_everything(
         handler=_get_alert_inner,
         description="Fetch a single Wazuh alert by its document id.",
         meta={"toolset": "alerts"},
+        args_model=GetAlertArgs,
     )
 
     async def _alerts_by_agent_inner(**kwargs: Any) -> Any:
@@ -569,6 +574,7 @@ def _register_everything(
         handler=_alerts_by_agent_inner,
         description="List alerts for a specific agent over a time range.",
         meta={"toolset": "alerts"},
+        args_model=AlertsByAgentArgs,
     )
 
     async def _alerts_by_mitre_inner(**kwargs: Any) -> Any:
@@ -582,6 +588,7 @@ def _register_everything(
         handler=_alerts_by_mitre_inner,
         description="List alerts matching a MITRE ATT&CK technique id.",
         meta={"toolset": "alerts"},
+        args_model=AlertsByMitreArgs,
     )
 
     # ---------- agents.* ----------
@@ -611,6 +618,7 @@ def _register_everything(
         handler=_list_agents_inner,
         description="List Wazuh agents, optionally filtered by status or group.",
         meta={"toolset": "agents"},
+        args_model=ListAgentsArgs,
     )
 
     async def _get_agent_inner(**kwargs: Any) -> Any:
@@ -624,6 +632,7 @@ def _register_everything(
         handler=_get_agent_inner,
         description="Fetch a single Wazuh agent by id.",
         meta={"toolset": "agents"},
+        args_model=_GetAgentArgs,
     )
 
     async def _agent_processes_inner(**kwargs: Any) -> Any:
@@ -637,6 +646,7 @@ def _register_everything(
         handler=_agent_processes_inner,
         description="List processes seen on an agent (syscollector inventory).",
         meta={"toolset": "agents"},
+        args_model=AgentSubquery,
     )
 
     async def _agent_packages_inner(**kwargs: Any) -> Any:
@@ -650,6 +660,7 @@ def _register_everything(
         handler=_agent_packages_inner,
         description="List installed packages on an agent (syscollector inventory).",
         meta={"toolset": "agents"},
+        args_model=AgentSubquery,
     )
 
     async def _agent_ports_inner(**kwargs: Any) -> Any:
@@ -663,6 +674,7 @@ def _register_everything(
         handler=_agent_ports_inner,
         description="List open ports on an agent (syscollector inventory).",
         meta={"toolset": "agents"},
+        args_model=AgentSubquery,
     )
 
     # ---------- vulnerabilities.* ----------
@@ -684,6 +696,7 @@ def _register_everything(
         handler=_list_vulns_inner,
         description="List vulnerabilities for an agent (Wazuh 4.8+ indexer-backed).",
         meta={"toolset": "vulnerabilities"},
+        args_model=ListVulnerabilitiesByAgentArgs,
     )
 
     async def _search_vulns_inner(**kwargs: Any) -> Any:
@@ -697,6 +710,7 @@ def _register_everything(
         handler=_search_vulns_inner,
         description="Search vulnerabilities by CVE id or minimum severity.",
         meta={"toolset": "vulnerabilities"},
+        args_model=SearchVulnerabilitiesArgs,
     )
 
     # ---------- mitre.* ----------
@@ -718,6 +732,7 @@ def _register_everything(
         handler=_get_technique_inner,
         description="Look up a MITRE ATT&CK technique by id (e.g. T1110.001).",
         meta={"toolset": "mitre"},
+        args_model=GetMitreTechniqueArgs,
     )
 
     async def _search_mitre_inner(**kwargs: Any) -> Any:
@@ -731,6 +746,7 @@ def _register_everything(
         handler=_search_mitre_inner,
         description="Search MITRE techniques by name substring or tactic.",
         meta={"toolset": "mitre"},
+        args_model=SearchMitreArgs,
     )
 
     # ---------- hunt.* ----------
@@ -755,6 +771,7 @@ def _register_everything(
             "{field, op, value} clauses from an allowlist - never raw DSL."
         ),
         meta={"toolset": "hunt"},
+        args_model=HuntQueryArgs,
     )
 
     async def _pivot_inner(**kwargs: Any) -> Any:
@@ -768,6 +785,7 @@ def _register_everything(
         handler=_pivot_inner,
         description="Pivot alerts by hash/ip/user/domain (preset over hunt_query).",
         meta={"toolset": "hunt"},
+        args_model=PivotByIocArgs,
     )
 
     # ---------- fim.* ----------
@@ -789,6 +807,7 @@ def _register_everything(
         handler=_fim_history_inner,
         description="History of file-integrity events for a specific path.",
         meta={"toolset": "fim"},
+        args_model=FimHistoryArgs,
     )
 
     async def _fim_changes_inner(**kwargs: Any) -> Any:
@@ -802,6 +821,7 @@ def _register_everything(
         handler=_fim_changes_inner,
         description="Recent file-integrity changes on a specific agent.",
         meta={"toolset": "fim"},
+        args_model=FimChangesArgs,
     )
 
     # ---------- resources ----------
@@ -995,6 +1015,7 @@ def _register_everything(
                 rbac_policy=rbac_policy,
                 limiter=limiter,
                 audit=audit_emitter,
+                args_model=IsolateAgentArgs,
             )
         )
 
@@ -1017,6 +1038,7 @@ def _register_everything(
                 rbac_policy=rbac_policy,
                 limiter=limiter,
                 audit=audit_emitter,
+                args_model=RestartAgentArgs,
             )
         )
 
@@ -1040,6 +1062,7 @@ def _register_everything(
                 rbac_policy=rbac_policy,
                 limiter=limiter,
                 audit=audit_emitter,
+                args_model=AddAgentToGroupArgs,
             )
         )
 
@@ -1062,6 +1085,7 @@ def _register_everything(
                 rbac_policy=rbac_policy,
                 limiter=limiter,
                 audit=audit_emitter,
+                args_model=RemoveAgentFromGroupArgs,
             )
         )
 
@@ -1085,6 +1109,7 @@ def _register_everything(
                 rbac_policy=rbac_policy,
                 limiter=limiter,
                 audit=audit_emitter,
+                args_model=CreateRuleArgs,
             )
         )
 
@@ -1108,6 +1133,7 @@ def _register_everything(
                 rbac_policy=rbac_policy,
                 limiter=limiter,
                 audit=audit_emitter,
+                args_model=UpdateRuleArgs,
             )
         )
 
@@ -1137,5 +1163,6 @@ def _register_everything(
                 rbac_policy=rbac_policy,
                 limiter=limiter,
                 audit=audit_emitter,
+                args_model=RunActiveResponseArgs,
             )
         )

@@ -17,12 +17,11 @@ from wazuh_mcp.tools.alerts import SearchAlertsArgs, search_alerts
 
 
 @pytest.mark.integration
-async def test_search_alerts_returns_seeded_data(session, audit, indexer):
+async def test_search_alerts_returns_seeded_data(session, indexer):
     result = await search_alerts(
         args=SearchAlertsArgs(time_range="24h"),
         session=session,
         indexer=indexer,
-        audit=audit,
     )
     # result is now SearchAlertsResult, not a dict.
     assert result.total >= 5
@@ -31,24 +30,22 @@ async def test_search_alerts_returns_seeded_data(session, audit, indexer):
 
 
 @pytest.mark.integration
-async def test_search_alerts_min_level_filters(session, audit, indexer):
+async def test_search_alerts_min_level_filters(session, indexer):
     result = await search_alerts(
         args=SearchAlertsArgs(time_range="24h", min_level=12),
         session=session,
         indexer=indexer,
-        audit=audit,
     )
     for alert in result.alerts:
         assert alert.rule.level >= 12
 
 
 @pytest.mark.integration
-async def test_search_alerts_cursor_paginates(session, audit, indexer):
+async def test_search_alerts_cursor_paginates(session, indexer):
     first = await search_alerts(
         args=SearchAlertsArgs(time_range="24h", size=5),
         session=session,
         indexer=indexer,
-        audit=audit,
     )
     cursor = first.next_cursor
     assert cursor is not None
@@ -57,7 +54,6 @@ async def test_search_alerts_cursor_paginates(session, audit, indexer):
         args=SearchAlertsArgs(time_range="24h", size=5, cursor=cursor),
         session=session,
         indexer=indexer,
-        audit=audit,
     )
     first_ids = {a.id for a in first.alerts}
     second_ids = {a.id for a in second.alerts}

@@ -7,6 +7,11 @@ from __future__ import annotations
 
 import io
 import os
+import shutil
+import subprocess
+import tempfile
+import time
+from pathlib import Path
 
 import httpx
 import pytest
@@ -26,6 +31,107 @@ KEYCLOAK_TOKEN_URL = f"{KEYCLOAK_URL}/realms/{KEYCLOAK_REALM}/protocol/openid-co
 WAZUH_MANAGER_URL = os.environ.get("WAZUH_MANAGER_URL", "https://localhost:55000")
 WAZUH_MANAGER_USER = os.environ.get("WAZUH_MANAGER_USER", "wazuh-wui")
 WAZUH_MANAGER_PASSWORD = os.environ.get("WAZUH_MANAGER_PASSWORD", "MCPmcp12345!")
+
+# Shared MCP HTTP server fixture address. The fixture itself lives below;
+# callers pull MCP_URL from this conftest so multiple test modules can
+# reference one canonical bind address without redefining it.
+MCP_URL = "http://127.0.0.1:8765"
+
+
+@pytest.fixture(scope="module")
+def mcp_http_server():
+    """Spawn the default MCP HTTP server on 127.0.0.1:8765 with analyst RBAC.
+
+    Lives in conftest so tests that don't define their own server fixture
+    (test_oauth_e2e, test_m4a_metrics, test_prompts/resources/tools_integration)
+    can share one boot per module without each importing it from a sibling
+    test file (which trips ruff F811 once both the import and the param
+    share the fixture name).
+    """
+    cfg_dir = Path(tempfile.mkdtemp(prefix="wm-m2-"))
+
+    (cfg_dir / "tenants.yaml").write_text(
+        """
+tenants:
+  - tenant_id: local
+    indexer_url: https://localhost:9200
+    verify_tls: false
+    ca_bundle_path: null
+    default_rbac_role: analyst
+    oauth_issuer: http://localhost:8080/realms/wazuh-mcp
+    oauth_audience: wazuh-mcp-api
+""".strip()
+    )
+    (cfg_dir / "secrets.yaml").write_text(
+        """
+local:
+  indexer_user: admin
+  indexer_password: admin
+""".strip()
+    )
+    (cfg_dir / "api_keys.yaml").write_text("api_keys: []\n")
+    (cfg_dir / "server.yaml").write_text(
+        f"""
+transport: http
+auth: oauth_chain
+http:
+  bind: "127.0.0.1:8765"
+  public_url: "{MCP_URL}"
+oauth:
+  issuer: http://localhost:8080/realms/wazuh-mcp
+  audience: wazuh-mcp-api
+  rbac_claims: [wazuh_mcp_role, groups, roles]
+  algorithms: [RS256]
+  clock_skew_seconds: 30
+api_keys_file: {cfg_dir / "api_keys.yaml"}
+""".strip()
+    )
+
+    env = os.environ.copy()
+    env["WAZUH_MCP_CONFIG_DIR"] = str(cfg_dir)
+    proc = subprocess.Popen(
+        ["uv", "run", "wazuh-mcp"],
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+
+    started = False
+    for _ in range(60):
+        if proc.poll() is not None:
+            stdout, stderr = proc.communicate(timeout=5)
+            raise RuntimeError(
+                "MCP HTTP server exited early\n"
+                f"stdout:\n{stdout.decode(errors='replace')}\n"
+                f"stderr:\n{stderr.decode(errors='replace')}"
+            )
+        try:
+            r = httpx.get(f"{MCP_URL}/healthz", timeout=1)
+            if r.status_code == 200:
+                started = True
+                break
+        except httpx.HTTPError:
+            pass
+        time.sleep(0.5)
+
+    if not started:
+        proc.kill()
+        stdout, stderr = proc.communicate(timeout=5)
+        raise RuntimeError(
+            "MCP HTTP server didn't come up in 30s\n"
+            f"stdout:\n{stdout.decode(errors='replace')}\n"
+            f"stderr:\n{stderr.decode(errors='replace')}"
+        )
+
+    try:
+        yield None
+    finally:
+        proc.terminate()
+        try:
+            proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+        shutil.rmtree(cfg_dir, ignore_errors=True)
 
 
 @pytest.fixture

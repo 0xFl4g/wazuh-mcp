@@ -11,7 +11,7 @@ from __future__ import annotations
 import httpx
 import pytest
 
-from tests.integration.test_oauth_e2e import MCP_URL
+from tests.integration.conftest import MCP_URL
 
 pytestmark = [pytest.mark.integration]
 

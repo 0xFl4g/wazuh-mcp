@@ -28,7 +28,7 @@ import subprocess
 import tempfile
 import time
 from collections.abc import AsyncIterator, Iterator
-from contextlib import AsyncExitStack
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -181,11 +181,19 @@ def mcp_http_server_writes_with_sink() -> Iterator[None]:
         shutil.rmtree(cfg_dir, ignore_errors=True)
 
 
-async def _open_mcp_session(url: str, token: str, stack: AsyncExitStack):
-    """Open an authenticated MCP streamable-HTTP ClientSession and return it.
+@asynccontextmanager
+async def _mcp_session(url: str, token: str):
+    """Authenticated MCP streamable-HTTP session, scoped to the caller's task.
 
-    Returned session is owned by ``stack``; the caller is responsible for
-    keeping ``stack`` alive for the session's lifetime.
+    The original M4b fixtures opened ``AsyncExitStack`` and ``yield``-ed the
+    session — but pytest-asyncio runs an async-generator fixture's setup and
+    teardown in different tasks, and anyio's ``CancelScope`` (used inside
+    ``streamable_http_client`` and ``ClientSession``) requires same-task
+    entry/exit. Result: every M4b test errored at teardown with
+    ``RuntimeError: Attempted to exit cancel scope in a different task than
+    it was entered in``. Inlining ``async with _mcp_session(...)`` inside
+    each test body keeps both ends in the test's own task — same approach
+    the M4a integration tests already use (see ``test_m4a_rbac.py``).
     """
     from mcp import ClientSession
     from mcp.client.streamable_http import streamable_http_client
@@ -194,32 +202,19 @@ async def _open_mcp_session(url: str, token: str, stack: AsyncExitStack):
         headers={"Authorization": f"Bearer {token}"},
         timeout=httpx.Timeout(30.0),
     )
-    stack.push_async_callback(http_client.aclose)
-    transport = await stack.enter_async_context(
-        streamable_http_client(f"{url}/mcp", http_client=http_client)
-    )
-    read, write, _gsid = transport
-    session = await stack.enter_async_context(ClientSession(read, write))
-    await session.initialize()
-    return session
-
-
-@pytest.fixture
-async def mcp_http_client_with_writes(mcp_http_server_writes, keycloak_token):
-    """Authenticated MCP session bound to the write-enabled tenant (port 8770)."""
-    async with AsyncExitStack() as stack:
-        session = await _open_mcp_session(MCP_WRITES_URL, keycloak_token(), stack)
-        yield session
-
-
-@pytest.fixture
-async def mcp_http_client_with_writes_and_indexer_sink(
-    mcp_http_server_writes_with_sink, keycloak_token
-):
-    """Authenticated MCP session bound to the writes+audit-sink tenant (port 8771)."""
-    async with AsyncExitStack() as stack:
-        session = await _open_mcp_session(MCP_WRITES_AUDIT_URL, keycloak_token(), stack)
-        yield session
+    try:
+        async with (
+            streamable_http_client(f"{url}/mcp", http_client=http_client) as (
+                read,
+                write,
+                _gsid,
+            ),
+            ClientSession(read, write) as session,
+        ):
+            await session.initialize()
+            yield session
+    finally:
+        await http_client.aclose()
 
 
 class _RawIndexerClient:
@@ -257,76 +252,80 @@ async def raw_indexer_client() -> AsyncIterator[_RawIndexerClient]:
         await inner.aclose()
 
 
-async def test_isolate_then_restart_agent_roundtrip(mcp_http_client_with_writes) -> None:
+async def test_isolate_then_restart_agent_roundtrip(mcp_http_server_writes, keycloak_token) -> None:
     """Happy path: isolate, check audit events landed, restart, verify both ok."""
-    iso = await mcp_http_client_with_writes.call_tool(
-        "write.isolate_agent", {"agent_id": "001", "confirm": True}
-    )
-    assert not iso.isError
+    async with _mcp_session(MCP_WRITES_URL, keycloak_token()) as session:
+        iso = await session.call_tool("write.isolate_agent", {"agent_id": "001", "confirm": True})
+        assert not iso.isError
 
-    restart = await mcp_http_client_with_writes.call_tool(
-        "write.restart_agent", {"agent_id": "001", "confirm": True}
-    )
-    assert not restart.isError
-
-
-async def test_add_then_remove_from_group(mcp_http_client_with_writes) -> None:
-    add = await mcp_http_client_with_writes.call_tool(
-        "write.add_agent_to_group",
-        {"agent_id": "001", "group_id": "test-group", "confirm": True},
-    )
-    assert not add.isError
-    remove = await mcp_http_client_with_writes.call_tool(
-        "write.remove_agent_from_group",
-        {"agent_id": "001", "group_id": "test-group", "confirm": True},
-    )
-    assert not remove.isError
+        restart = await session.call_tool(
+            "write.restart_agent", {"agent_id": "001", "confirm": True}
+        )
+        assert not restart.isError
 
 
-async def test_create_rule_uploads_file(mcp_http_client_with_writes) -> None:
-    result = await mcp_http_client_with_writes.call_tool(
-        "write.create_rule",
-        {
-            "rule": {
-                "id": 100_100,
-                "level": 5,
-                "description": "wazuh-mcp M4b integration test rule",
+async def test_add_then_remove_from_group(mcp_http_server_writes, keycloak_token) -> None:
+    async with _mcp_session(MCP_WRITES_URL, keycloak_token()) as session:
+        add = await session.call_tool(
+            "write.add_agent_to_group",
+            {"agent_id": "001", "group_id": "test-group", "confirm": True},
+        )
+        assert not add.isError
+        remove = await session.call_tool(
+            "write.remove_agent_from_group",
+            {"agent_id": "001", "group_id": "test-group", "confirm": True},
+        )
+        assert not remove.isError
+
+
+async def test_create_rule_uploads_file(mcp_http_server_writes, keycloak_token) -> None:
+    async with _mcp_session(MCP_WRITES_URL, keycloak_token()) as session:
+        result = await session.call_tool(
+            "write.create_rule",
+            {
+                "rule": {
+                    "id": 100_100,
+                    "level": 5,
+                    "description": "wazuh-mcp M4b integration test rule",
+                },
+                "confirm": True,
             },
-            "confirm": True,
-        },
-    )
-    assert not result.isError
+        )
+        assert not result.isError
 
 
 async def test_run_active_response_rejected_when_command_not_allowlisted(
-    mcp_http_client_with_writes,
+    mcp_http_server_writes, keycloak_token
 ) -> None:
-    result = await mcp_http_client_with_writes.call_tool(
-        "write.run_active_response",
-        {
-            "agent_id": "001",
-            "command_name": "not-in-allowlist",
-            "custom_args": None,
-            "confirm": True,
-        },
-    )
+    async with _mcp_session(MCP_WRITES_URL, keycloak_token()) as session:
+        result = await session.call_tool(
+            "write.run_active_response",
+            {
+                "agent_id": "001",
+                "command_name": "not-in-allowlist",
+                "custom_args": None,
+                "confirm": True,
+            },
+        )
     assert result.isError
     text = "".join(getattr(c, "text", "") for c in result.content).lower()
     assert "allowlist" in text or "forbidden" in text
 
 
-async def test_confirm_missing_rejected_at_args_parse(mcp_http_client_with_writes) -> None:
-    result = await mcp_http_client_with_writes.call_tool("write.isolate_agent", {"agent_id": "001"})
+async def test_confirm_missing_rejected_at_args_parse(
+    mcp_http_server_writes, keycloak_token
+) -> None:
+    async with _mcp_session(MCP_WRITES_URL, keycloak_token()) as session:
+        result = await session.call_tool("write.isolate_agent", {"agent_id": "001"})
     assert result.isError
 
 
 async def test_audit_events_double_land_in_indexer(
-    mcp_http_client_with_writes_and_indexer_sink, raw_indexer_client
+    mcp_http_server_writes_with_sink, keycloak_token, raw_indexer_client
 ) -> None:
     """One tool call -> both requested + completed audits in wazuh-mcp-audit-*."""
-    await mcp_http_client_with_writes_and_indexer_sink.call_tool(
-        "write.isolate_agent", {"agent_id": "001", "confirm": True}
-    )
+    async with _mcp_session(MCP_WRITES_AUDIT_URL, keycloak_token()) as session:
+        await session.call_tool("write.isolate_agent", {"agent_id": "001", "confirm": True})
     await asyncio.sleep(3)
     today = datetime.now(UTC).strftime("%Y.%m.%d")
     resp = await raw_indexer_client.search(

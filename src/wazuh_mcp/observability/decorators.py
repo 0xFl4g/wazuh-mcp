@@ -25,12 +25,15 @@ trail.
 from __future__ import annotations
 
 import functools
+import inspect
 import time
 from collections.abc import Awaitable, Callable
-from typing import Any
+from typing import Any, get_type_hints
 
 from opentelemetry import trace
+from pydantic import BaseModel
 from pydantic import ValidationError as _PydanticValidationError
+from pydantic_core import PydanticUndefined
 
 from wazuh_mcp.auth.session import Session
 from wazuh_mcp.observability.audit import MultiSinkAuditEmitter
@@ -41,6 +44,40 @@ from wazuh_mcp.transport.session_ctx import current_session
 from wazuh_mcp.wazuh.errors import WazuhError
 
 
+def _signature_from_args_model(args_model: type[BaseModel]) -> inspect.Signature:
+    """Build a flat keyword-only ``Signature`` from a Pydantic Args model.
+
+    FastMCP's ``func_metadata`` introspects the wrapped tool function via
+    ``inspect.signature(...)`` and creates a Pydantic Args model with one
+    field per parameter. With the decorator's ``_inner(**kwargs)`` runtime,
+    the introspected signature collapses to a single ``kwargs`` field —
+    every wire-level tool call then fails at the Pydantic-validation step
+    with ``kwargs Field required``.
+
+    Setting ``__signature__`` on the wrapper bypasses that collapse:
+    ``inspect.signature`` honours ``__signature__`` first, before walking
+    ``__wrapped__`` or doing parameter inspection. Fields are surfaced
+    keyword-only with their ``Annotated[T, FieldInfo(...)]`` so descriptions
+    and constraints land in the JSON Schema FastMCP exposes to clients.
+    """
+    hints = get_type_hints(args_model, include_extras=True)
+    params: list[inspect.Parameter] = []
+    for name, field in args_model.model_fields.items():
+        annotation = hints.get(name, field.annotation)
+        default: Any = (
+            field.default if field.default is not PydanticUndefined else inspect.Parameter.empty
+        )
+        params.append(
+            inspect.Parameter(
+                name,
+                inspect.Parameter.KEYWORD_ONLY,
+                default=default,
+                annotation=annotation,
+            )
+        )
+    return inspect.Signature(parameters=params)
+
+
 def instrumented_tool(
     *,
     tool_name: str,
@@ -48,6 +85,7 @@ def instrumented_tool(
     rbac_policy: Callable[[Session], dict[str, list[str]]],
     limiter: RateLimiter,
     audit: MultiSinkAuditEmitter,
+    args_model: type[BaseModel] | None = None,
 ) -> Callable[..., Awaitable[Any]]:
     tracer = trace.get_tracer("wazuh_mcp")
     counters = m4_counters()
@@ -281,10 +319,15 @@ def instrumented_tool(
                 )
                 return result
 
-    # functools.wraps preserves __wrapped__, __doc__, __annotations__, and
-    # __qualname__ so FastMCP's schema introspection in T25 can walk back
-    # to the original handler. A distinct __name__ is then restored for
-    # audit/diagnostic clarity.
+    # functools.wraps preserves __doc__ and __qualname__ for diagnostic
+    # clarity. A distinct __name__ is restored so audit traces and FastMCP's
+    # generated Args model name (``{func.__name__}Arguments``) carry the
+    # tool identity rather than the inner handler's. ``__signature__`` is
+    # synthesized from ``args_model`` so FastMCP's signature-based schema
+    # introspection sees the typed fields instead of collapsing to a single
+    # ``kwargs`` parameter.
     wrapped = functools.wraps(handler)(_inner)
     wrapped.__name__ = f"instrumented_{tool_name.replace('.', '_')}"
+    if args_model is not None:
+        wrapped.__signature__ = _signature_from_args_model(args_model)  # ty: ignore[unresolved-attribute]
     return wrapped

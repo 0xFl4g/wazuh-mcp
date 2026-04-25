@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from tests.integration.test_oauth_e2e import MCP_URL
+from tests.integration.conftest import MCP_URL
 
 
 @pytest.mark.integration

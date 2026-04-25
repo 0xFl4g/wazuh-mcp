@@ -444,3 +444,49 @@ async def test_non_write_tool_emits_single_audit_as_before() -> None:
     events = [line for line in out.getvalue().splitlines() if line]
     assert len(events) == 1
     assert '"outcome": "ok"' in events[0]
+
+
+def test_args_model_surfaces_typed_fields_to_fastmcp_introspection() -> None:
+    """Pin: FastMCP must see flat typed fields, not collapse to ``kwargs``.
+
+    Latent regression caught after M4a/M4b shipped: the decorator's
+    ``_inner(**kwargs)`` was visible to ``inspect.signature`` so FastMCP's
+    schema-from-signature introspection produced a single ``kwargs: Any``
+    field. Every wire-level tool call then failed at Pydantic validation
+    with ``kwargs Field required`` — invisible to unit tests that called
+    the wrapper directly with kwargs, and to local arm64+darwin runners
+    that auto-skip the integration suite.
+
+    Asserts the schema FastMCP would generate matches the supplied
+    ``args_model`` field names. If anyone removes the ``args_model``
+    plumbing or drops ``__signature__`` injection, this test goes red
+    instead of letting the regression sail through to amd64 CI.
+    """
+    from mcp.server.fastmcp.utilities.func_metadata import func_metadata
+
+    from wazuh_mcp.tools.alerts import SearchAlertsArgs
+    from wazuh_mcp.tools.write import CreateRuleArgs, IsolateAgentArgs
+
+    for tool_name, model, expected in [
+        (
+            "alerts.search_alerts",
+            SearchAlertsArgs,
+            {"time_range", "min_level", "agent_id", "size", "cursor"},
+        ),
+        ("write.isolate_agent", IsolateAgentArgs, {"agent_id", "confirm"}),
+        ("write.create_rule", CreateRuleArgs, {"rule", "confirm"}),
+    ]:
+        wrapped = instrumented_tool(
+            tool_name=tool_name,
+            handler=_handler,
+            rbac_policy=_policy,
+            limiter=_limiter(),
+            audit=MultiSinkAuditEmitter(sinks=[StderrSink(stream=io.StringIO())]),
+            args_model=model,
+        )
+        meta = func_metadata(wrapped)
+        actual = set(meta.arg_model.model_fields.keys())
+        assert actual == expected, (
+            f"{tool_name}: FastMCP saw fields {actual!r}, expected {expected!r} "
+            f"(if this is just {{'kwargs'}} the decorator regressed)"
+        )
