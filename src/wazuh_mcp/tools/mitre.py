@@ -60,9 +60,13 @@ async def get_mitre_technique(
     if not _TECHNIQUE_ID_RE.match(args.technique_id):
         raise ValueError("invalid technique_id")
 
+    # Wazuh stores both an internal ``id`` (UUID) and ``external_id`` (the
+    # human-readable ATT&CK identifier like ``T1110``) per technique. The
+    # public-facing argument is the external id, so query by that field —
+    # ``q=id=T1110`` matches no rows.
     body = await server_api.get(
         "/mitre/techniques",
-        params={"q": f"id={args.technique_id}"},
+        params={"q": f"external_id={args.technique_id}"},
         run_as=session.wazuh_user,
     )
 

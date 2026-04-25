@@ -72,4 +72,22 @@ for _ in $(seq 1 40); do
     sleep 10
 done
 
+# Wazuh agent auto-enrolls via authd a few seconds after the manager is up;
+# wait until the manager reports an active agent so M4b write-tool tests
+# (write.isolate_agent / write.restart_agent) target a connected peer.
+# Bounded at ~2 minutes — if it never connects, downstream tests will
+# surface the failure with a clearer error than a flaky stall.
+echo "[bootstrap] waiting for wazuh-agent to enroll + connect..."
+TOKEN=$(curl -sku wazuh-wui:MCPmcp12345! \
+    "https://localhost:55000/security/user/authenticate?raw=true" 2>/dev/null || true)
+for _ in $(seq 1 24); do
+    if [ -n "$TOKEN" ] && curl -sk -H "Authorization: Bearer $TOKEN" \
+        "https://localhost:55000/agents?status=active" 2>/dev/null \
+        | grep -q '"id":"001"'; then
+        echo "[bootstrap] wazuh-agent connected as id=001."
+        break
+    fi
+    sleep 5
+done
+
 echo "[bootstrap] ready. Run: uv run pytest -m integration"

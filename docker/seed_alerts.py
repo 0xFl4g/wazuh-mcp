@@ -1,12 +1,10 @@
 """Seed the Wazuh indexer with synthetic alerts for integration tests.
 
-Also registers agent ``001`` against the wazuh-manager Server API so the
-M4b write-tool integration tests (``write.isolate_agent``,
-``write.add_agent_to_group``, etc.) have a real target — the integration
-compose has no wazuh-agent container, but the manager's ``POST /agents``
-endpoint will accept a registration without a running agent process.
-The synthetic alerts then reference the same agent.id so the
-read-and-write surfaces line up.
+The integration compose now ships a ``wazuh-agent`` container that
+auto-enrolls against the manager via authd, so this script no longer
+needs to ``POST /agents`` itself — the agent shows up as id=001 on its
+own. We DO still pre-create the ``test-group`` group via the manager
+API so ``test_add_then_remove_from_group`` has a non-default target.
 
 Assumes the docker-compose stack is healthy on localhost:9200 with the
 default admin credentials.
@@ -30,10 +28,11 @@ MANAGER_USER = os.environ.get("WAZUH_MANAGER_USER", "wazuh-wui")
 MANAGER_PASSWORD = os.environ.get("WAZUH_MANAGER_PASSWORD", "MCPmcp12345!")
 
 
-def _register_agent_001() -> None:
-    """Best-effort: register agent ``001`` with the manager so write tools have
-    a real target. If the agent already exists or the manager is unreachable,
-    log and continue — the alert seeding still works without it.
+def _create_test_group() -> None:
+    """Best-effort: pre-create the ``test-group`` group on the manager so
+    ``test_add_then_remove_from_group`` has a target group to attach the
+    auto-enrolled agent to. Idempotent on a fresh fixture; warns and
+    continues otherwise.
     """
     auth = httpx.post(
         f"{MANAGER_BASE}/security/user/authenticate?raw=true",
@@ -45,26 +44,20 @@ def _register_agent_001() -> None:
         print(f"[seed] manager auth skipped (status {auth.status_code})", file=sys.stderr)
         return
     token = auth.text.strip()
-    # POST /agents accepts {name, ip} and assigns an id. The seeded synthetic
-    # alerts reference agent.id="001"; the manager picks the next free id, so
-    # set ip to "any" to take the first slot deterministically on a fresh
-    # fixture.
-    resp = httpx.post(
-        f"{MANAGER_BASE}/agents",
+    grp = httpx.post(
+        f"{MANAGER_BASE}/groups",
         headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
-        json={"name": "web-01", "ip": "any"},
+        json={"group_id": "test-group"},
         verify=False,
         timeout=10,
     )
-    if resp.status_code in (200, 201):
-        body = resp.json()
-        new_id = body.get("data", {}).get("id")
-        print(f"[seed] registered agent id={new_id}")
-    elif resp.status_code == 400 and "already" in resp.text.lower():
-        print("[seed] agent already registered, skipping")
+    if grp.status_code in (200, 201):
+        print("[seed] created group 'test-group'")
+    elif grp.status_code == 400 and "exist" in grp.text.lower():
+        print("[seed] group 'test-group' already exists, skipping")
     else:
         print(
-            f"[seed] agent registration returned {resp.status_code}: {resp.text[:300]}",
+            f"[seed] group creation returned {grp.status_code}: {grp.text[:300]}",
             file=sys.stderr,
         )
 
@@ -87,7 +80,7 @@ def _alert(idx: int, level: int, offset_min: int) -> dict:
 
 
 def main() -> int:
-    _register_agent_001()
+    _create_test_group()
     client = httpx.Client(auth=AUTH, verify=False, timeout=30)
     docs = []
     # Offsets span the last 24h — 5 min apart for the first 5 (critical window),

@@ -192,14 +192,17 @@ class ServerApiClient:
         """Upload a per-rule XML file. The manager must be restarted out-of-band
         for the ruleset to reload.
 
-        Wazuh's rule-file endpoint accepts application/xml with overwrite=true
-        as a query-string flag.
+        Wazuh 4.x exposes file uploads via ``PUT /manager/files`` with the
+        target path passed as a ``path`` query parameter relative to the
+        manager's ``etc/`` directory. (Pre-4.x APIs put the path in the URL
+        — that shape returns 404 on 4.9 and was the M4b integration-test
+        regression.)
         """
         return await self.put_raw(
-            f"/manager/files/rules/{filename}",
+            "/manager/files",
             content=xml,
             content_type="application/xml",
-            params={"overwrite": "true"},
+            params={"path": f"etc/rules/{filename}", "overwrite": "true"},
             run_as=run_as,
         )
 

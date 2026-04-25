@@ -105,13 +105,22 @@ async def test_remove_agent_from_group_deletes(client, httpx_mock) -> None:
 
 @pytest.mark.asyncio
 async def test_upload_rule_file_puts_raw_xml(client, httpx_mock) -> None:
+    """Wazuh 4.x exposes file uploads via ``PUT /manager/files`` with the
+    target path passed as a ``path`` query parameter (``etc/rules/<name>``).
+    Pre-4.x APIs accepted the path in the URL — pinning the 4.x shape here
+    so an accidental revert lights up locally before hitting CI.
+    """
     httpx_mock.add_response(
         url=httpx.URL(
-            "https://wazuh.example:55000/manager/files/rules/wazuh-mcp-100100.xml",
-            params={"run_as": "alice", "overwrite": "true"},
+            "https://wazuh.example:55000/manager/files",
+            params={
+                "path": "etc/rules/wazuh-mcp-100100.xml",
+                "overwrite": "true",
+                "run_as": "alice",
+            },
         ),
         method="PUT",
-        json={"data": {"affected_items": ["wazuh-mcp-100100.xml"]}},
+        json={"data": {"affected_items": ["etc/rules/wazuh-mcp-100100.xml"]}},
     )
     xml = (
         b'<group name="test"><rule id="100100" level="5">'
@@ -119,13 +128,12 @@ async def test_upload_rule_file_puts_raw_xml(client, httpx_mock) -> None:
     )
     resp = await client.upload_rule_file(filename="wazuh-mcp-100100.xml", xml=xml, run_as="alice")
     assert "data" in resp
-    rule_upload_requests = [
-        r
-        for r in httpx_mock.get_requests()
-        if r.url.path == "/manager/files/rules/wazuh-mcp-100100.xml"
-    ]
-    assert rule_upload_requests, "expected a PUT to the rule-file endpoint"
-    ct = rule_upload_requests[-1].headers["content-type"]
+    rule_upload_requests = [r for r in httpx_mock.get_requests() if r.url.path == "/manager/files"]
+    assert rule_upload_requests, "expected a PUT to /manager/files"
+    sent = rule_upload_requests[-1]
+    assert sent.url.params["path"] == "etc/rules/wazuh-mcp-100100.xml"
+    assert sent.url.params["overwrite"] == "true"
+    ct = sent.headers["content-type"]
     assert ct.startswith("application/xml") or ct == "application/octet-stream"
 
 

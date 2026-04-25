@@ -53,6 +53,36 @@ class IndexerClient:
             raise map_http_error(resp)
         return resp.json()
 
+    async def bulk(self, *, body: str) -> dict[str, Any]:
+        """POST /_bulk with an NDJSON body. Used by ``WazuhIndexerSink``.
+
+        Body is a pre-built NDJSON string of action+source pairs; the caller
+        owns the index/op-type metadata. Surfaces the parsed response so
+        callers can inspect ``errors`` and per-item statuses.
+        """
+        resp = await self._client.post(
+            "/_bulk",
+            content=body,
+            headers={"Content-Type": "application/x-ndjson"},
+        )
+        if resp.status_code >= 400:
+            raise map_http_error(resp)
+        return resp.json()
+
+    async def put_index_template(self, *, name: str, body: dict[str, Any]) -> dict[str, Any]:
+        """PUT /_index_template/<name>. Used by ``WazuhIndexerSink`` to pin
+        the audit-index mapping before bulk-writing.
+
+        Idempotent on the server: PUT with the same name+body acks the
+        existing template; sinks call this once per process lifetime.
+        """
+        if not name or "/" in name or ".." in name:
+            raise ValueError("invalid template name")
+        resp = await self._client.put(f"/_index_template/{name}", json=body)
+        if resp.status_code >= 400:
+            raise map_http_error(resp)
+        return resp.json()
+
     async def aclose(self) -> None:
         if self._closed:
             return

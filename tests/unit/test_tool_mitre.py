@@ -72,7 +72,7 @@ async def server_api(httpx_mock):
 @pytest.mark.asyncio
 async def test_get_mitre_technique_happy(session, audit, server_api, httpx_mock):
     httpx_mock.add_response(
-        url="https://manager.example:55000/mitre/techniques?q=id%3DT1110.001",
+        url="https://manager.example:55000/mitre/techniques?q=external_id%3DT1110.001",
         method="GET",
         json={
             "data": {
@@ -107,7 +107,7 @@ async def test_get_mitre_technique_rejects_bad_id(session, audit, server_api):
 @pytest.mark.asyncio
 async def test_get_mitre_technique_not_found(session, audit, server_api, httpx_mock):
     httpx_mock.add_response(
-        url="https://manager.example:55000/mitre/techniques?q=id%3DT9999",
+        url="https://manager.example:55000/mitre/techniques?q=external_id%3DT9999",
         method="GET",
         json={"data": {"affected_items": []}},
     )

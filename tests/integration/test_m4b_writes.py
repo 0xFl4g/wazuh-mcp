@@ -325,14 +325,26 @@ async def test_confirm_missing_rejected_at_args_parse(
 async def test_audit_events_double_land_in_indexer(
     mcp_http_server_writes_with_sink, keycloak_token, raw_indexer_client
 ) -> None:
-    """One tool call -> both requested + completed audits in wazuh-mcp-audit-*."""
+    """One tool call -> both requested + completed audits in wazuh-mcp-audit-*.
+
+    Uses ``write.add_agent_to_group`` because that's a manager-side
+    metadata edit — it needs a registered agent + an existing group, both
+    of which the seed script provides, but no running agent process. The
+    decorator's double-emit contract is the same regardless of which
+    write tool is invoked, so swapping in a non-active-response tool here
+    keeps the test focused on the audit invariant rather than the
+    agent-process roundtrip.
+    """
     async with _mcp_session(MCP_WRITES_AUDIT_URL, keycloak_token()) as session:
-        await session.call_tool("write.isolate_agent", {"agent_id": "001", "confirm": True})
+        await session.call_tool(
+            "write.add_agent_to_group",
+            {"agent_id": "001", "group_id": "test-group", "confirm": True},
+        )
     await asyncio.sleep(3)
     today = datetime.now(UTC).strftime("%Y.%m.%d")
     resp = await raw_indexer_client.search(
         index=f"wazuh-mcp-audit-{today}",
-        query={"match": {"tool": "write.isolate_agent"}},
+        query={"match": {"tool": "write.add_agent_to_group"}},
     )
     outcomes = [h["_source"]["outcome"] for h in resp["hits"]["hits"]]
     assert "write.requested" in outcomes
