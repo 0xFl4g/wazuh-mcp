@@ -193,10 +193,11 @@ class ServerApiClient:
         for the ruleset to reload.
 
         Wazuh 4.x exposes file uploads via ``PUT /manager/files`` with the
-        target path passed as a ``path`` query parameter relative to the
-        manager's ``etc/`` directory. (Pre-4.x APIs put the path in the URL
-        — that shape returns 404 on 4.9 and was the M4b integration-test
-        regression.)
+        target path passed as a ``path`` query parameter relative to
+        ``/var/ossec/`` — for user rules that's ``etc/rules/<filename>``.
+        Pre-4.x APIs put the path in the URL; 4.9 returns 404 on that
+        shape and surfaced the regression once integration CI started
+        running again.
         """
         return await self.put_raw(
             "/manager/files",
