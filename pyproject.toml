@@ -1,6 +1,6 @@
 [project]
 name = "wazuh-mcp"
-version = "0.5.0"
+version = "0.5.1"
 description = "Model Context Protocol server for Wazuh SIEM/XDR"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -82,3 +82,8 @@ include = ["tests/**/*.py"]
 invalid-argument-type = "ignore"
 unknown-argument = "ignore"
 invalid-assignment = "ignore"
+# Note: ``★ "<param> is unused"`` warnings on integration-test fixture
+# parameters (e.g. ``mcp_http_server`` argued for its pytest-fixture
+# side effect) are intentional. ty has no rule name to silence them
+# selectively as of v0.0.x — accepting the noise rather than disabling
+# all unused-binding checks across tests/.
