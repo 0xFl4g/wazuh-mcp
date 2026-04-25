@@ -72,4 +72,58 @@ for _ in $(seq 1 40); do
     sleep 10
 done
 
+# ---------- TEMPORARY: probe Wazuh 4.9 API for skip-marked tests ----------
+# Remove these probes once the create_rule + MITRE endpoints are mapped.
+TOKEN=$(curl -sku wazuh-wui:MCPmcp12345! \
+    "https://localhost:55000/security/user/authenticate?raw=true" 2>/dev/null || true)
+if [ -n "$TOKEN" ]; then
+    echo "[probe] === MITRE: GET /mitre/techniques (no filter, limit=3) ==="
+    curl -sk -H "Authorization: Bearer $TOKEN" \
+        "https://localhost:55000/mitre/techniques?limit=3" | head -c 1500
+    echo
+    echo "[probe] === MITRE: GET /mitre/techniques?q=external_id=T1110 ==="
+    curl -sk -H "Authorization: Bearer $TOKEN" \
+        "https://localhost:55000/mitre/techniques?q=external_id=T1110" | head -c 1500
+    echo
+    echo "[probe] === MITRE: GET /mitre/techniques?external_id=T1110 (param not q) ==="
+    curl -sk -H "Authorization: Bearer $TOKEN" \
+        "https://localhost:55000/mitre/techniques?external_id=T1110" | head -c 1500
+    echo
+    echo "[probe] === MITRE: GET /mitre/metadata ==="
+    curl -sk -H "Authorization: Bearer $TOKEN" \
+        "https://localhost:55000/mitre/metadata" | head -c 1500
+    echo
+
+    XML='<group name="wazuh-mcp"><rule id="100100" level="5"><description>probe</description></rule></group>'
+    echo "[probe] === RULE: PUT /manager/files?path=etc/rules/probe.xml&overwrite=true ==="
+    curl -sk -w "\n[probe] http=%{http_code}\n" -X PUT \
+        -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/xml" \
+        --data-raw "$XML" \
+        "https://localhost:55000/manager/files?path=etc/rules/probe.xml&overwrite=true" \
+        | head -c 1500
+    echo
+    echo "[probe] === RULE: PUT /manager/files?path=ruleset/rules/probe.xml&overwrite=true ==="
+    curl -sk -w "\n[probe] http=%{http_code}\n" -X PUT \
+        -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/xml" \
+        --data-raw "$XML" \
+        "https://localhost:55000/manager/files?path=ruleset/rules/probe.xml&overwrite=true" \
+        | head -c 1500
+    echo
+    echo "[probe] === RULE: PUT /manager/files/etc/rules/probe.xml?overwrite=true ==="
+    curl -sk -w "\n[probe] http=%{http_code}\n" -X PUT \
+        -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/xml" \
+        --data-raw "$XML" \
+        "https://localhost:55000/manager/files/etc/rules/probe.xml?overwrite=true" \
+        | head -c 1500
+    echo
+    echo "[probe] === RULE: PUT /manager/files/rules/probe.xml?overwrite=true (legacy) ==="
+    curl -sk -w "\n[probe] http=%{http_code}\n" -X PUT \
+        -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/xml" \
+        --data-raw "$XML" \
+        "https://localhost:55000/manager/files/rules/probe.xml?overwrite=true" \
+        | head -c 1500
+    echo
+fi
+# ---------- END TEMPORARY PROBES ----------
+
 echo "[bootstrap] ready. Run: uv run pytest -m integration"
