@@ -44,7 +44,11 @@ jobs:
 
       - name: Dump compose logs on failure
         if: failure()
-        run: docker compose -p wazuh-mcp-ci -f docker/compose.yaml logs --no-color > compose.log || true
+        run: |
+          docker compose -p wazuh-mcp-ci -f docker/integration-compose.yml ps -a > compose.log 2>&1 || true
+          echo "" >> compose.log
+          echo "=== docker compose logs --tail=300 ===" >> compose.log
+          docker compose -p wazuh-mcp-ci -f docker/integration-compose.yml logs --no-color --tail=300 >> compose.log 2>&1 || true
 
       - name: Upload compose logs
         if: failure()
