@@ -60,11 +60,43 @@ tenants:
     default_rbac_role: analyst
     oauth_issuer: http://localhost:8080/realms/wazuh-mcp
     oauth_audience: wazuh-mcp-api
+    rate_limit:
+      tenant:
+        capacity: 100
+        refill_per_sec: 10.0
+      session:
+        capacity: 10
+        refill_per_sec: 1.0
+    audit_sinks:
+      - kind: wazuh_indexer
+        index_prefix: local-audit
+  - tenant_id: tenant_b
+    indexer_url: https://localhost:9200
+    verify_tls: false
+    ca_bundle_path: null
+    default_rbac_role: analyst
+    oauth_issuer: http://localhost:8080/realms/wazuh-mcp
+    oauth_audience: wazuh-mcp-api
+    rate_limit:
+      tenant:
+        capacity: 2
+        refill_per_sec: 0.001
+      session:
+        capacity: 100
+        refill_per_sec: 1.0
+    audit_sinks:
+      - kind: wazuh_indexer
+        index_prefix: tenant-b-audit
 """.strip()
     )
     (cfg_dir / "secrets.yaml").write_text(
         """
 local:
+  indexer_user: admin
+  indexer_password: admin
+  server_api_user: wazuh-wui
+  server_api_password: MCPmcp12345!
+tenant_b:
   indexer_user: admin
   indexer_password: admin
   server_api_user: wazuh-wui
