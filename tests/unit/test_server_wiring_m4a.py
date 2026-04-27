@@ -17,21 +17,8 @@ from wazuh_mcp.observability.sinks.stream import StderrSink
 from wazuh_mcp.rate_limit.limiter import InProcessRateLimiter
 from wazuh_mcp.rbac.policy import effective_allowlist_for
 from wazuh_mcp.server import _install_rbac_hooks, _register_everything, build_app, load_config
-from wazuh_mcp.tenancy.config import TenantConfig
 from wazuh_mcp.tenancy.m4_config import RateLimitConfig
 from wazuh_mcp.transport.session_ctx import CURRENT_SESSION, set_current_session
-
-
-def _tenant_no_writes() -> TenantConfig:
-    """TenantConfig that registers zero write.* tools — keeps the M4a-era
-    '17 tools' invariant stable while M4b writes live behind an allowlist.
-    """
-    return TenantConfig(
-        tenant_id="t",
-        indexer_url="https://indexer.example",
-        default_rbac_role="admin",
-        write_allowlist=[],
-    )
 
 
 @pytest.fixture
@@ -97,7 +84,6 @@ def test_rbac_list_tools_handler_identity_pinning() -> None:
         audit_emitter=audit,
         limiter=limiter,
         rbac_policy=_policy_allow_admin,
-        tenant_cfg=_tenant_no_writes(),
     )
 
     # Capture FastMCP's handler identity before installing RBAC wrappers.
@@ -127,7 +113,6 @@ async def test_rbac_list_tools_filter_allows_admin_denies_empty() -> None:
         audit_emitter=audit,
         limiter=limiter,
         rbac_policy=_policy_allow_admin,
-        tenant_cfg=_tenant_no_writes(),
     )
     _install_rbac_hooks(mcp_app, rbac_policy=_policy_allow_admin, audit_emitter=audit)
 
@@ -144,7 +129,9 @@ async def test_rbac_list_tools_filter_allows_admin_denies_empty() -> None:
         handler = mcp_app._mcp_server.request_handlers[mt.ListToolsRequest]
         result = await handler(req)
         tools = result.root.tools  # ty: ignore[unresolved-attribute]
-        assert len(tools) == 17
+        # M4c T8: registration is unconditional. 17 read-only tools + 7 M4b
+        # writes = 24 (was 17 under M4b's registration-time write_allowlist).
+        assert len(tools) == 24
 
         # Swap in a deny-all policy and re-install to exercise filtering.
         _install_rbac_hooks(mcp_app, rbac_policy=_policy_deny_all, audit_emitter=audit)
@@ -180,7 +167,6 @@ async def test_rbac_call_tool_deny_emits_forbidden_audit() -> None:
             audit_emitter=audit,
             limiter=limiter,
             rbac_policy=_policy_deny_all,
-            tenant_cfg=_tenant_no_writes(),
         )
         _install_rbac_hooks(mcp_app, rbac_policy=_policy_deny_all, audit_emitter=audit)
 
