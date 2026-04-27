@@ -42,7 +42,7 @@ from wazuh_mcp.rbac.policy import effective_allowlist_for
 from wazuh_mcp.secrets.yaml_driver import YamlSecretStore
 from wazuh_mcp.tenancy.config import TenantConfig
 from wazuh_mcp.tenancy.issuer_index import IssuerIndex
-from wazuh_mcp.tenancy.registry import YamlTenantRegistry
+from wazuh_mcp.tenancy.registry import TenantRegistry, YamlTenantRegistry
 from wazuh_mcp.transport.http import build_asgi_app
 from wazuh_mcp.transport.session_ctx import (
     current_session,
@@ -341,6 +341,9 @@ class HttpAppConfig:
     authorization_server: str
     # M4a wiring — defaults preserve M3 call sites.
     tenant: TenantConfig | None = None
+    # M4c: per-tenant policy resolution. ``load_http_config`` builds the
+    # registry and keeps it alive here so resolvers can close over it.
+    registry: TenantRegistry | None = None
     limiter: RateLimiter | None = None
     audit: MultiSinkAuditEmitter | None = None
 
@@ -390,6 +393,7 @@ def load_http_config(config_dir: Path) -> HttpAppConfig:
         resource_url=http_cfg["public_url"],
         authorization_server=oauth_cfg["issuer"],
         tenant=primary_tenant,
+        registry=registry,
     )
 
 
