@@ -297,3 +297,57 @@ async def run_active_response(
         failed_agents=failed,
         timestamp=datetime.now(UTC),
     )
+
+
+# ---------- 8. restart_manager ----------
+
+
+class RestartManagerArgs(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    scope: Literal["node", "cluster"] = "cluster"
+    confirm: Annotated[
+        Literal[True],
+        Field(
+            description=(
+                "Must be set to true by a human user. Restarting the Wazuh "
+                "manager (or cluster) cycles every connected agent's "
+                "connection and is recorded in the audit log."
+            )
+        ),
+    ]
+
+
+class RestartManagerResult(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    ok: bool
+    scope: Literal["node", "cluster"]
+    affected_nodes: list[str]
+    timestamp: datetime
+
+
+async def restart_manager(
+    *,
+    args: RestartManagerArgs,
+    session: Session,
+    server_api: Any,
+) -> RestartManagerResult:
+    pre = await server_api.cluster_status()
+    if args.scope == "cluster" and not pre["enabled"]:
+        raise WazuhError(
+            "upstream_error",
+            "cluster scope requested but clustering is not enabled on this manager",
+            400,
+        )
+    affected_nodes = [n["name"] for n in pre.get("nodes", [])]
+    if not affected_nodes:
+        # Single-node manager — use a sentinel name.
+        affected_nodes = ["this-node"]
+    await server_api.restart_cluster(scope=args.scope, run_as=session.wazuh_user)
+    return RestartManagerResult(
+        ok=True,
+        scope=args.scope,
+        affected_nodes=affected_nodes,
+        timestamp=datetime.now(UTC),
+    )
