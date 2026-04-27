@@ -40,9 +40,11 @@ def test_wazuh_error_repr_scrubs_message():
     assert "agent 999" not in repr(err)
 
 
-def test_confirm_required_is_safe_code() -> None:
-    """confirm_required is a client-visible WazuhError code; Claude pattern-
-    matches on it to re-prompt the human."""
-    err = WazuhError("confirm_required", "human confirmation required", 403)
-    assert err.code == "confirm_required"
-    assert err.status_code == 403
+def test_confirm_required_not_in_safe_codes() -> None:
+    """confirm_required was reserved for future MCP elicitation but never
+    fired at runtime; the Pydantic ``confirm: Literal[True]`` arg-shape gate
+    is the confirm contract. Constructing a WazuhError with it must now
+    raise."""
+    assert "confirm_required" not in SAFE_CODES
+    with pytest.raises(ValueError, match="unsafe error code"):
+        WazuhError("confirm_required", "human confirmation required", 403)

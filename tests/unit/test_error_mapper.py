@@ -83,7 +83,6 @@ def test_safe_codes_enumerated():
                 "upstream_error",
                 "not_found",
                 "upstream_timeout",
-                "confirm_required",
             }
         )
         == SAFE_CODES
