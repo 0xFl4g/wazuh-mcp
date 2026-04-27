@@ -23,7 +23,7 @@ import base64
 import json
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import httpx
 
@@ -228,6 +228,40 @@ class ServerApiClient:
             params={"agents_list": ",".join(agent_ids)},
             run_as=run_as,
         )
+
+    async def restart_cluster(
+        self,
+        *,
+        scope: Literal["node", "cluster"],
+        run_as: str | None = None,
+    ) -> dict[str, Any]:
+        """Restart this manager node (scope='node') or the entire cluster
+        (scope='cluster').
+
+        Wazuh 4.9 returns 200 immediately on the restart request — actual
+        cluster cycle takes 30s-5min depending on node count. Caller must
+        poll cluster_status() for readiness.
+        """
+        path = "/cluster/restart" if scope == "cluster" else "/manager/restart"
+        return await self.put(path, run_as=run_as)
+
+    async def cluster_status(self, *, run_as: str | None = None) -> dict[str, Any]:
+        """Combined cluster status: /cluster/status enabled+running flags +
+        /cluster/nodes node list. When clustering is disabled, /cluster/nodes
+        is skipped and the returned `nodes` list is empty.
+
+        Returns: {"enabled": bool, "running": bool, "nodes": [{"name", "type", "status"}, ...]}.
+        Wazuh's 'yes'/'no' strings are normalized to booleans here.
+        """
+        status_resp = await self.get("/cluster/status", run_as=run_as)
+        data = status_resp.get("data", {})
+        enabled = data.get("enabled", "no") == "yes"
+        running = data.get("running", "no") == "yes"
+        nodes: list[dict[str, Any]] = []
+        if enabled:
+            nodes_resp = await self.get("/cluster/nodes", run_as=run_as)
+            nodes = nodes_resp.get("data", {}).get("affected_items", []) or []
+        return {"enabled": enabled, "running": running, "nodes": nodes}
 
     # ---- Internal ----
 
