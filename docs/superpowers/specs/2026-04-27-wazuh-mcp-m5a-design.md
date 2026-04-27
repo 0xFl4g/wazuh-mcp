@@ -36,26 +36,40 @@
 
 ---
 
-## 1. Eval harness
+## 1. Eval harness — Claude Code slash command (no CI gate)
 
-### 1.1 Architecture
+### 1.1 Constraint-driven design
 
-Layout under `tests/eval/`:
+The maintainer cannot afford an `ANTHROPIC_API_KEY` for CI. The eval harness ships as a *manually-invoked* Claude Code slash command, using the maintainer's existing Claude Code subscription. The eval is a **release-time gate**, not a regression detector. The corpus + scoring script are framework-agnostic so a v1.x community contributor with their own API key can wrap them in CI later.
+
+### 1.2 Architecture — two-phase
+
+**Phase 1 (LLM, in Claude Code session):** the slash command instructs Claude to read each prompt + the wazuh-mcp tool catalog, decide what tool it would call, and write the decision to a raw-results JSON file. Claude does NOT execute the tool — just records the intended call.
+
+**Phase 2 (pure-Python scoring, no API needed):** `tools/eval/score.py` loads raw-results + corpus, asserts per-tier (selection / args / sequence), computes per-category accuracy, and writes a final `results.json` against `thresholds.yaml`. Exit code 1 if accuracy below gate.
+
+**Cheating mitigation:** the slash command instructs Claude to read prompts WITHOUT viewing `expected_tool`. Phase 2 reads expected_tool but only after Phase 1's choices are committed to the raw file. Honor system + git-blame review.
+
+### 1.3 Repo layout
 
 ```
-tests/eval/
-├── __init__.py
-├── conftest.py             # pytest fixtures: anthropic client, tool catalog
-├── corpus/
-│   ├── selection_only.yaml # 30 prompts → expected tool name
-│   ├── with_args.yaml      # 10 prompts → expected tool name + key arg subset
-│   └── multi_step.yaml     # 5 prompts → expected tool sequence
-├── runner.py               # corpus loader + pytest test generation
-├── thresholds.yaml         # per-model accuracy gates
-└── report.py               # session-end aggregator + JSON dump
+.claude/commands/
+└── eval-wazuh-mcp.md             # slash command markdown — drives Phase 1
+docs/eval/
+├── README.md                     # corpus authoring + run procedure
+└── corpus/
+    ├── selection_only.yaml       # 30 entries
+    ├── with_args.yaml            # 10 entries
+    └── multi_step.yaml           # 5 entries
+tools/eval/
+├── score.py                      # Phase 2: load raw results + corpus, assert
+├── thresholds.yaml               # per-model accuracy gates
+└── README.md                     # operator-facing run + interpretation guide
+docs/eval-history/
+└── YYYY-MM-DD-<model>-results.json   # committed audit trail (git history is the regression record)
 ```
 
-### 1.2 Corpus shape
+### 1.4 Corpus shape
 
 **Three tiers, one YAML schema per tier.**
 
@@ -82,7 +96,7 @@ tests/eval/
   category: writes
 ```
 
-`multi_step.yaml` (5 entries; each step asserts tool name + optional args; the runner replays a stub `tool_result` to drive the next turn):
+`multi_step.yaml` (5 entries; each step asserts tool name + optional args; the slash command instructs Claude to record the sequence as a JSON list including the stub `tool_result` it would have received between steps):
 ```yaml
 - id: cluster_restart_flow
   prompt: "Restart the Wazuh manager cluster and tell me when it's back."
@@ -97,81 +111,86 @@ tests/eval/
   category: triage
 ```
 
-**Categories** (used for failure-grouping in reports): `triage`, `hunt`, `writes`, `inventory`, `mitre`, `fim`, `vulns`. Authored by hand; ~6-7 prompts per category in selection_only.
+**Categories:** `triage`, `hunt`, `writes`, `inventory`, `mitre`, `fim`, `vulns`. Authored by hand; ~6-7 prompts per category in selection_only.
 
-### 1.3 Runner mechanism
+### 1.5 Slash command (`.claude/commands/eval-wazuh-mcp.md`)
 
-`runner.py`:
-1. Loads each YAML corpus file at module import.
-2. Generates one pytest test function per entry via `pytest_generate_tests` hook (parametrized by entry).
-3. Each test ID is the YAML `id` field — clean failure reports.
-4. Tests parametrized over `[("claude-sonnet-4-6", 0.85), ("claude-opus-4-7", 0.95)]` via `@pytest.mark.parametrize` outer-loop.
+The command's markdown body instructs the live Claude Code session to:
 
-**Per-test execution:**
-- Instantiate `Anthropic` client with API key from `ANTHROPIC_API_KEY` env.
-- Build `tools` parameter from `mcp_app.list_tools()` JSON-Schema (the wazuh-mcp tool catalog produced by `_register_everything`).
-- Call `client.messages.create(model=model, max_tokens=4096, tools=tools, messages=[{"role": "user", "content": prompt}])`.
-- For selection_only: scan response `content` for the first `tool_use` block; assert `block.name == expected_tool`.
-- For with_args: scan for `tool_use`; assert name match AND `all(input.get(k) == v for k, v in expected_args.items())`.
-- For multi_step: drive multi-turn loop. After Claude emits a `tool_use`, append `{"role": "assistant", "content": [response]}` + `{"role": "user", "content": [{"type": "tool_result", "tool_use_id": ..., "content": json.dumps(stub_result)}]}` and re-call. Assert each step's tool name (and args if specified). Sequence must match in order.
+1. **Pre-flight:** verify wazuh-mcp is connected as an MCP server in the current Claude Code session. If not, abort with an operator message pointing at `docs/eval/README.md`.
+2. **Phase 1a — selection_only:** for each entry in `docs/eval/corpus/selection_only.yaml`:
+   - Read just `id` + `prompt`. Do NOT read `expected_tool`.
+   - With the wazuh-mcp tool catalog attached to the conversation, decide what tool you'd call for this prompt.
+   - **Don't actually invoke it.** Write to `docs/eval-history/<today>-<model>-results-raw.json`: `{tier: "selection_only", id, picked_tool, picked_args}`.
+3. **Phase 1b — with_args:** same, but also record `picked_args`.
+4. **Phase 1c — multi_step:** drive a simulated multi-turn loop. For each step, decide the tool, record it, then read the corpus entry's `stub_result` for that step as if it were returned, decide the next step, and repeat. Record the full picked sequence.
+5. **Phase 2:** invoke `uv run python tools/eval/score.py docs/eval-history/<today>-<model>-results-raw.json`. The script writes `<today>-<model>-results.json` and prints summary.
+6. **Print final summary:** per-category accuracy + any failures + path to results.json.
+7. **Operator next step:** "review `<today>-<model>-results.json`, commit it (`git add docs/eval-history/...`), and decide whether to ship."
 
-**Per-eval failure surfaces** the prompt, expected, and what Claude actually picked. Pytest's verbose output at INFO level.
+**Filename convention:** `<today>-<model>-results-raw.json` and `<today>-<model>-results.json`. Model name is read from the slash command's instruction set ("which model are you currently running?") OR taken from a `--model` arg passed to the slash command. The slash command writes the model name into both files. This lets the maintainer run the eval against multiple models on different days and accumulate an audit trail.
 
-### 1.4 Aggregator + accuracy gates
+### 1.6 Scoring script (`tools/eval/score.py`)
 
-Session-end (pytest `pytest_sessionfinish` hook in `report.py`):
-- Collect per-model pass/fail counts.
-- Compute accuracy = passed / total per model.
-- Compare against `thresholds.yaml`:
-  ```yaml
-  models:
-    claude-sonnet-4-6: 0.85
-    claude-opus-4-7: 0.95
-  ```
-- If any model below threshold → exit code 1 (workflow fails).
-- Write `eval-report.json` artifact: `{model: {accuracy, passed, failed, by_category: {...}}}`.
+Pure-Python, no API access, ~150 LoC.
 
-### 1.5 CI workflow
+**Inputs:** raw results JSON + the three corpus files + `thresholds.yaml`.
 
-New `.github/workflows/eval.yml`:
+**Per-tier scoring:**
+- selection_only: `picked_tool == expected_tool`.
+- with_args: `picked_tool == expected_tool` AND `all(picked_args.get(k) == v for k, v in expected_args.items())`. Subset semantics — extra picked_args keys are OK.
+- multi_step: `len(picked_sequence) == len(expected_sequence)` AND each step's tool name matches AND if `args` is specified for a step, subset-match the picked args.
 
-```yaml
-name: eval
-on:
-  schedule:
-    - cron: "47 3 * * *"   # nightly UTC, off-peak, off-minute
-  workflow_dispatch:
-
-jobs:
-  eval:
-    runs-on: ubuntu-22.04
-    steps:
-      - uses: actions/checkout@v6
-      - uses: astral-sh/setup-uv@v7
-      - run: uv sync --frozen
-      - run: uv run pytest tests/eval -m eval -v --tb=short
-        env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: eval-report
-          path: eval-report.json
-      - run: cat eval-report.json >> $GITHUB_STEP_SUMMARY
+**Output:** `results.json` shape:
+```json
+{
+  "model": "claude-opus-4-7",
+  "run_date": "2026-04-27",
+  "overall": {"accuracy": 0.91, "passed": 41, "failed": 4, "total": 45},
+  "by_tier": {
+    "selection_only": {"accuracy": 0.93, "passed": 28, "failed": 2, "total": 30},
+    "with_args": {"accuracy": 0.90, "passed": 9, "failed": 1, "total": 10},
+    "multi_step": {"accuracy": 0.80, "passed": 4, "failed": 1, "total": 5}
+  },
+  "by_category": {
+    "triage": {"accuracy": 0.95, ...},
+    ...
+  },
+  "failures": [
+    {"id": "...", "tier": "selection_only", "expected": "alerts.search_alerts", "picked": "agents.list_agents"}
+  ],
+  "thresholds_met": true
+}
 ```
 
-**Pytest mark:** `@pytest.mark.eval` registered in `pyproject.toml` `[tool.pytest.ini_options].markers`. `eval` and `integration` are separate marks — eval runs do NOT spin up the Wazuh docker stack.
+**Thresholds (`tools/eval/thresholds.yaml`):**
+```yaml
+default:
+  selection_only: 0.85
+  with_args: 0.90
+  multi_step: 0.80
+  overall: 0.85
+per_model:
+  claude-opus-4-7:
+    overall: 0.90   # higher bar for top-tier model
+  claude-haiku-4-5:
+    overall: 0.75   # lower bar for cheap-tier (if maintainer ever runs against it)
+```
 
-**Cost projection:** ~45 evals × 2 models × ~1500 input + 200 output tokens (selection-only) to ~5000 input + 1500 output (multi-step). Approximate monthly cost: $100-150.
+`thresholds_met` in results.json is `true` iff every applicable threshold is met. Script exits 0 if met, 1 if not. Maintainer uses exit code as the release-gate signal.
 
-**Pre-execution requirement:** `ANTHROPIC_API_KEY` repository secret must be set in GitHub Settings → Secrets and variables → Actions before the eval workflow runs. T6's docs note this; if the secret is unset the workflow exits early with a clear message instead of swallowing the error.
+### 1.7 Audit trail
 
-### 1.6 Forward extensibility
+`docs/eval-history/` is committed to the repo. Every eval run produces a results.json (and a raw-results.json for debugging — also committed). Git history shows accuracy trends across releases. README.md in that directory explains:
+- "results-raw.json is what Claude saw + decided" (Phase 1 output, debugging)
+- "results.json is the scored report" (Phase 2 output, ship-gate)
+- "review failures with `jq '.failures' <file>`"
 
-- Adding a prompt = appending one YAML entry. No runner changes.
-- Adding a new model to the matrix = adding one `thresholds.yaml` entry.
-- Switching corpora to JSONL or another format = swap the corpus loader; runner + thresholds unchanged.
-- Web UI / fancy reporting deferred to v1.x — text + JSON artifact is sufficient for v0.8.0.
+### 1.8 Forward extensibility
+
+- Adding a prompt = appending one YAML entry. No script changes.
+- Adding a model to thresholds = one entry under `per_model:`. The maintainer just runs the eval in a Claude Code session of that model.
+- Wrapping in CI (v1.x community contribution): `tools/eval/score.py` is framework-agnostic. A `tools/eval/run_via_api.py` wrapper would loop the corpus, call `anthropic.Anthropic` directly, write the raw-results, and invoke score.py — same interface, automated. The corpus + thresholds + scoring don't change.
 
 ---
 
@@ -356,7 +375,6 @@ markers = [
     "integration: requires Wazuh + Keycloak docker stack",
     "requires_manager: needs Wazuh manager + agent (auto-skips on darwin/arm64)",
     "destructive: mutates shared docker state — runs in destructive-integration.yml only",
-    "eval: requires ANTHROPIC_API_KEY; runs in eval.yml workflow",
 ]
 ```
 
@@ -387,13 +405,13 @@ Any future destructive test (e.g., `test_create_rule_uploads_then_restart_activa
 
 ## 5. Phasing & dispatch profile
 
-**Phase 1 — eval harness (T1-T6).** Largest workstream, most novel.
+**Phase 1 — eval harness (T1-T6).** Maintainer-run via Claude Code slash command; no CI gate.
 - T1: corpus authoring (selection_only.yaml — 30 entries) [tier-B, batched authoring]
 - T2: corpus authoring (with_args.yaml — 10 entries) [tier-B]
 - T3: corpus authoring (multi_step.yaml — 5 entries) [tier-B]
-- T4: runner.py + report.py [tier-A — novel runner, multi-turn replay]
-- T5: thresholds.yaml + pytest mark + accuracy aggregator wiring [tier-B]
-- T6: eval.yml workflow + ANTHROPIC_API_KEY secret docs [tier-B]
+- T4: `tools/eval/score.py` scoring script + `thresholds.yaml` + tools/eval/README.md [tier-B — pure-Python, no API]
+- T5: `.claude/commands/eval-wazuh-mcp.md` slash command + docs/eval/README.md [tier-B — markdown procedure]
+- T6: maintainer-runs slash command against current Claude Code model, commits initial baseline `docs/eval-history/<today>-<model>-results.json` so M5a ship inherits a real audit trail (NOT a shipping gate task — confirms harness works end-to-end before tagging) [controller inline]
 
 **Phase 2 — cross-tenant leak suite (T7-T9).**
 - T7: Keycloak claim-mapper bootstrap + conftest fixtures [tier-A — auth/security primitive]
@@ -410,18 +428,17 @@ Any future destructive test (e.g., `test_create_rule_uploads_then_restart_activa
 - T14: docs/deploy/m5a-quality-gates.md operator doc [controller inline]
 - T15: bump 0.8.0, retro, tag v0.8.0-m5a, push [controller inline]
 
-**Total:** 15 tasks. 8-13 implementer dispatches expected. T4 (runner) + T7 (Keycloak claim mapper) are tier-A — full review or close spot-check. Rest are tier-B.
+**Total:** 15 tasks. 8-13 implementer dispatches expected. T7 (Keycloak claim mapper) is the only tier-A task — auth/security primitive. Rest are tier-B or controller-inline. The slash-command redesign drops the original tier-A T4 (the pytest+API runner) — the new T4 (`score.py`) is mechanical Python with no security surface.
 
 ---
 
 ## 6. Open questions resolved during brainstorm
 
 - **Eval target shape:** Hybrid 30+10+5 (selection-only + with-args + multi-step). Pure-tier corpus rejected as too narrow.
-- **Eval models:** Sonnet 4.6 + Opus 4.7 matrix with per-model bars (≥85% / ≥95%). Single-model rejected as risk of model-overfit; Haiku addition deferred to v1.x.
-- **Eval CI cadence:** Nightly only. PR-smoke deferred (cost / fork-PR-secret friction).
-- **Eval framework:** Pytest + YAML corpus (D). Hand-rolled runner ~150 LoC; promptfoo / Anthropic Evals SDK rejected as adding deps for marginal gain.
+- **Eval execution model:** Maintainer-run Claude Code slash command (option C). Constraint-driven — maintainer cannot afford a CI `ANTHROPIC_API_KEY`. Earlier brainstorm proposed nightly CI with Sonnet+Opus matrix (~$100-150/month) but that's incompatible with the cost constraint. Pytest+CI runner rejected; promptfoo/Anthropic Evals SDK rejected as adding deps for no gain. The slash command uses the maintainer's existing Claude Code subscription. Whatever model the Claude Code session runs against (typically Opus 4.7) is what the eval scores — recorded in the results filename + JSON. Multi-model eval = run the slash command from a Sonnet session and an Opus session on different days; both results land in `docs/eval-history/`. Per-model thresholds preserved in `tools/eval/thresholds.yaml`.
 - **Cross-tenant token mint:** Claim mapper in single Keycloak realm (B). Multi-realm (A) rejected as rare in real deployments; hand-minted JWTs (C) rejected as bypassing OAuth chain.
 - **M5a vs M5b boundary:** M5a = quality gates only. Group-target AR moves to v1.1 (feature, not gate). Helm + LTS matrix + docs + Vault integration → M5b.
+- **CI eval as v1.x community contribution:** the corpus + scoring script are framework-agnostic. A future contributor with a paid API key can write a `tools/eval/run_via_api.py` that loops the corpus → calls `anthropic.Anthropic` → writes raw-results → invokes `score.py`. The corpus + thresholds + scoring don't change. Tracked as a v1.x carry-forward, not blocking v1.0.
 
 ---
 
@@ -442,7 +459,7 @@ Items deferred from this spec to M5b:
 ## 8. Success criteria
 
 M5a ships when:
-1. `tests/eval` runs in nightly CI with both Sonnet 4.6 + Opus 4.7 above their thresholds.
+1. `/eval-wazuh-mcp` slash command exists and runs end-to-end against a live Claude Code session with wazuh-mcp connected. T6 produces an initial baseline `docs/eval-history/<today>-<model>-results.json` against the maintainer's current Claude Code model. Phase 2 scoring exits 0 against `tools/eval/thresholds.yaml` (i.e. the corpus is well-calibrated AND the model meets bar). Threshold tuning is part of T6 — if first run scores below threshold, decide: (a) lower threshold, (b) fix corpus prompt that's ambiguous, (c) accept fail and document. NOT a "make it pass at any cost" exercise.
 2. `tests/integration/test_m4d_multi_tenant.py` has 5 passing tests (no skip-stubs); the cross-tenant negatives all pass.
 3. `security.yml` workflow runs on PR with green dependency audit + secret scan.
 4. `destructive-integration.yml` workflow runs on weekly schedule + manual dispatch; `test_restart_manager_node_scope_completes` is un-skipped and passes there.
