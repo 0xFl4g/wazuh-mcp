@@ -125,6 +125,7 @@ Integration tests (docker compose required):
 - **M4b (v0.5.0-m4b)** — write-tool surface: 7 `write.*` tools (agent isolate/restart, group add/remove, rule create/update, active-response), `confirm: Literal[True]` safety contract, two-layer per-tenant allowlist, `run_as` attribution, double-audit emit.
 - **v0.5.1** — integration-restoration patch: 9 latent bugs fixed after the never-running integration suite was made to run (decorator schema collapse, missing IndexerClient methods, wrong rule-upload + active-response wire shapes).
 - **M4c (v0.6.0-m4c)** — per-tenant policy resolution (closes the multi-tenant policy-bleed gap), `write.restart_manager` + `cluster.status` (rule-activation flow inside MCP), multi-agent `run_active_response` (`agent_ids: list[str]`), `confirm_required` cleanup. See `docs/deploy/m4c-multi-tenant.md`.
+- **M4d (v0.7.0-m4d)** — multi-tenant runtime isolation completion: per-tenant rate-limit budgets (closes cross-tenant DOS), per-tenant audit-sink fan-out (closes cross-tenant audit leak). No new operator-config surface. See `docs/deploy/m4d-multi-tenant-runtime.md`.
 - **M5 (planned)** — ship-gate: eval harness, Wazuh LTS matrix CI, cross-tenant leak suite, multi-manager integration fixture, Helm chart, full docs.
 
 See `docs/superpowers/specs/` for full specs per milestone.
@@ -136,3 +137,4 @@ See `docs/superpowers/specs/` for full specs per milestone.
 - M4a (secrets, observability, audit): `docs/deploy/m4a-secrets.md`, `m4a-observability.md`, `m4a-audit.md`
 - M4b (write tools): `docs/deploy/m4b-writes.md`
 - M4c (multi-tenant + new writes): `docs/deploy/m4c-multi-tenant.md`
+- M4d (per-tenant rate-limit + audit-sink fan-out): `docs/deploy/m4d-multi-tenant-runtime.md`

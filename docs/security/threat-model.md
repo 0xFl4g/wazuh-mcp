@@ -91,6 +91,13 @@ Before deploying M2 to production:
 - [ ] `WAZUH_MCP_CONFIG_DIR` points at a path only the service user can read.
 - [ ] Structured logs are shipped to a SIEM (ideally back to the same Wazuh the MCP server talks to).
 
+## M4d additions
+
+- **Per-tenant rate-limit isolation.** `InProcessRateLimiter.per_tenant` populated from `registry.all_tenants()` at boot. Tenant_a's bucket exhaustion no longer affects tenant_b. Closes the "rogue session burns shared budget" cross-tenant DOS path that persisted through M4c.
+- **Per-tenant audit-sink fan-out.** `MultiSinkAuditEmitter` dual-track refactor. `emit(session)` routes to `global_sinks` (always-on, defaults to `[StderrSink()]`) plus `per_tenant_sinks.get(session.tenant_id, [])`. Closes the "tenant_a's audit events leak to tenant_b's sink" forensic-isolation gap. Existing M4a sink lifecycle (rollback on start failure, exception-group-safe stop) preserved across the flat `_all_sinks` list.
+- **Drop-metric `tenant` label.** `mcp_audit_drops_total{sink, tenant, reason}` series cardinality manageable for 50+ tenant deployments. `<global>` sentinel for global sinks; identity-keyed lookup so distinct tenant sink instances of the same class get distinct labels.
+- **Boot-time fail-fast on per-tenant sink config.** `_build_per_tenant_sinks` wraps each tenant's `_build_sinks` call with a tenant-id-tagged `RuntimeError` (`audit sinks for tenant 'tenant_X' failed to build: ...`). Operator gets the offending tenant's name on misconfiguration instead of an opaque sink-construction trace.
+
 ## M4c additions
 
 - **Per-tenant policy resolution.** `role_tool_allowlist`, `write_allowlist`, and `active_response_allowlist` now resolve at call time against `session.tenant_id` via three resolver factories in `src/wazuh_mcp/rbac/resolver.py`. Closes the multi-tenant policy-bleed: a session minted for tenant B no longer sees tenant A's allowlists. Single-tenant deployments (stdio + single-tenant HTTP) are behavior-equivalent because both modes route through the same factories with a one-entry registry.

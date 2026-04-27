@@ -1,5 +1,7 @@
 # M4a — Observability
 
+> **M4d update (v0.7.0-m4d, 2026-04-27).** Per-tenant rate-limit and per-tenant audit-sink fan-out now wire correctly. Schemas unchanged (`rate_limit:` + `audit_sinks:` per tenant). `mcp_audit_drops_total` Prom counter gains a `tenant` label dimension (cardinality grows by N tenants). See `m4d-multi-tenant-runtime.md`.
+
 ## Overview
 
 wazuh-mcp emits OpenTelemetry traces and Prometheus metrics for every tool call, plus a small set of ambient counters (JWT refreshes, rate-limit denials, audit drops). Traces go out via OTLP; metrics are scraped from the process over HTTP. Configuration is entirely through environment variables — the service resource attributes are fixed and operators never touch them.
