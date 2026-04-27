@@ -277,14 +277,17 @@ def build_app(cfg: AppConfig, audit: MultiSinkAuditEmitter | None = None) -> Fas
             await _ensure_session_async()
             return await _open_server_api()
 
-    def _rbac_policy(session: Session) -> dict[str, list[str]]:
-        # TODO(M4b): resolve tenant-specific override via TenantRegistry.
-        # Today we capture the primary tenant's allowlist — fine for
-        # single-tenant stdio, but an enterprise multi-tenant deploy will
-        # need session.tenant_id → tenant_cfg.role_tool_allowlist lookup
-        # here. The `session` arg must stay in the signature so a future
-        # refactor doesn't innocently delete it.
-        return effective_allowlist_for(tenant_override=cfg.tenant.role_tool_allowlist)
+    from wazuh_mcp.rbac.resolver import (
+        make_ar_allowlist,
+        make_rbac_policy,
+        make_write_allowlist,
+    )
+    from wazuh_mcp.tenancy.registry import SingleTenantRegistry
+
+    _registry = SingleTenantRegistry(cfg.tenant)
+    rbac_policy = make_rbac_policy(_registry, audit_emitter)
+    write_allowlist_policy = make_write_allowlist(_registry, audit_emitter)
+    ar_allowlist_policy = make_ar_allowlist(_registry, audit_emitter)
 
     _register_everything(
         app,
@@ -292,10 +295,12 @@ def build_app(cfg: AppConfig, audit: MultiSinkAuditEmitter | None = None) -> Fas
         server_api_pool=_ServerApiAdapter(),
         audit_emitter=audit_emitter,
         limiter=limiter,
-        rbac_policy=_rbac_policy,
+        rbac_policy=rbac_policy,
         tenant_cfg=cfg.tenant,
+        write_allowlist_policy=write_allowlist_policy,
+        ar_allowlist_policy=ar_allowlist_policy,
     )
-    _install_rbac_hooks(app, rbac_policy=_rbac_policy, audit_emitter=audit_emitter)
+    _install_rbac_hooks(app, rbac_policy=rbac_policy, audit_emitter=audit_emitter)
 
     # Expose the emitter so the stdio runner can manage lifecycle.
     app._wazuh_mcp_audit_emitter = audit_emitter  # ty: ignore[unresolved-attribute]
@@ -490,6 +495,8 @@ def _register_everything(
     limiter: RateLimiter,
     rbac_policy: Callable[[Session], dict[str, list[str]]],
     tenant_cfg: TenantConfig | None = None,
+    write_allowlist_policy: Callable[[Session], list[str] | None] | None = None,
+    ar_allowlist_policy: Callable[[Session], list[str]] | None = None,
 ) -> None:
     """Register every M3 tool, resource, and prompt onto ``mcp_app``.
 
@@ -1183,11 +1190,18 @@ def _register_everything(
             args = RunActiveResponseArgs(**kwargs)
             session = current_session()
             sapi = await server_api_pool.acquire(session.tenant_id)
+            # M4c: resolve the per-tenant AR allowlist per call. Falls back
+            # to the captured tenant_cfg list when no resolver is wired
+            # (legacy callers; removed in M4c T8 once both modes plumb).
+            if ar_allowlist_policy is not None:
+                effective_ar_allowlist = list(ar_allowlist_policy(session))
+            else:
+                effective_ar_allowlist = list(ar_allowlist)
             return await _run_active_response(
                 args=args,
                 session=session,
                 server_api=sapi,
-                ar_allowlist=ar_allowlist,
+                ar_allowlist=effective_ar_allowlist,
             )
 
         mcp_app.tool(
