@@ -38,7 +38,6 @@ from wazuh_mcp.observability.otel import init_otel
 from wazuh_mcp.observability.sinks.base import AuditSink
 from wazuh_mcp.rate_limit.limiter import InProcessRateLimiter, RateLimiter
 from wazuh_mcp.rbac.filter import is_allowed
-from wazuh_mcp.rbac.policy import effective_allowlist_for
 from wazuh_mcp.secrets.yaml_driver import YamlSecretStore
 from wazuh_mcp.tenancy.config import TenantConfig
 from wazuh_mcp.tenancy.issuer_index import IssuerIndex
@@ -432,15 +431,31 @@ def build_http_app(http_cfg: HttpAppConfig, audit: MultiSinkAuditEmitter | None 
 
     mcp_app = FastMCP(name="wazuh-mcp")
 
-    def _rbac_policy(session: Session) -> dict[str, list[str]]:
-        # TODO(M4b): resolve tenant-specific override via TenantRegistry.
-        # Today we capture the primary tenant's allowlist — fine for
-        # single-tenant HTTP, but an enterprise multi-tenant deploy will
-        # need session.tenant_id → tenant_cfg.role_tool_allowlist lookup
-        # here. The `session` arg must stay in the signature so a future
-        # refactor doesn't innocently delete it.
-        override = http_cfg.tenant.role_tool_allowlist if http_cfg.tenant is not None else None
-        return effective_allowlist_for(tenant_override=override)
+    from wazuh_mcp.rbac.resolver import (
+        make_ar_allowlist,
+        make_rbac_policy,
+        make_write_allowlist,
+    )
+    from wazuh_mcp.tenancy.registry import SingleTenantRegistry
+
+    # Defense-in-depth: if registry is None (extremely rare; legacy callers),
+    # fall back to a SingleTenantRegistry built from primary tenant. Logs a
+    # warning but server still boots.
+    _registry: TenantRegistry | None = http_cfg.registry
+    if _registry is None and http_cfg.tenant is not None:
+        _registry = SingleTenantRegistry(http_cfg.tenant)
+    if _registry is None:
+        # No tenant configured at all — every call will fail with
+        # tenant_not_registered. Build a registry that always raises.
+        class _EmptyRegistry:
+            def get(self, tenant_id: str):  # type: ignore[no-untyped-def]
+                raise KeyError(f"unknown tenant: {tenant_id}")
+
+        _registry = _EmptyRegistry()  # type: ignore[assignment]
+
+    rbac_policy = make_rbac_policy(_registry, audit_emitter)
+    write_allowlist_policy = make_write_allowlist(_registry, audit_emitter)
+    ar_allowlist_policy = make_ar_allowlist(_registry, audit_emitter)
 
     _register_everything(
         mcp_app,
@@ -448,10 +463,12 @@ def build_http_app(http_cfg: HttpAppConfig, audit: MultiSinkAuditEmitter | None 
         server_api_pool=http_cfg.server_api_pool,
         audit_emitter=audit_emitter,
         limiter=limiter,
-        rbac_policy=_rbac_policy,
+        rbac_policy=rbac_policy,
         tenant_cfg=http_cfg.tenant,
+        write_allowlist_policy=write_allowlist_policy,
+        ar_allowlist_policy=ar_allowlist_policy,
     )
-    _install_rbac_hooks(mcp_app, rbac_policy=_rbac_policy, audit_emitter=audit_emitter)
+    _install_rbac_hooks(mcp_app, rbac_policy=rbac_policy, audit_emitter=audit_emitter)
 
     ready = [False]
 
