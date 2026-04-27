@@ -75,7 +75,7 @@ tenants:
     verify_tls: false
     ca_bundle_path: null
     default_rbac_role: analyst
-    oauth_issuer: http://localhost:8080/realms/wazuh-mcp
+    oauth_issuer: http://localhost:8080/realms/wazuh-mcp-tenant-b
     oauth_audience: wazuh-mcp-api
     rate_limit:
       tenant:
