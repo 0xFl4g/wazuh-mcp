@@ -12,6 +12,8 @@ from __future__ import annotations
 
 from typing import Any
 
+import pytest
+
 from wazuh_mcp.auth.session import Session
 from wazuh_mcp.observability.audit import MultiSinkAuditEmitter
 
@@ -168,3 +170,55 @@ def test_emit_preserves_error_reason_kwarg_from_m4c() -> None:
         error_reason="tenant_not_registered",
     )
     assert g.events[0]["error_reason"] == "tenant_not_registered"
+
+
+# ---------- _build_per_tenant_sinks helper ----------
+
+
+def test_build_per_tenant_sinks_returns_dict_keyed_by_tenant_id(tmp_path) -> None:
+    from wazuh_mcp.server import _build_per_tenant_sinks
+    from wazuh_mcp.tenancy.config import TenantConfig
+    from wazuh_mcp.tenancy.m4_config import StderrSinkConfig
+
+    t_a = TenantConfig(
+        tenant_id="tenant_a",
+        indexer_url="https://indexer.example.com:9200",
+        verify_tls=False,
+        default_rbac_role="readonly",
+        oauth_issuer="https://issuer-a.example.com",
+        oauth_audience="aud",
+        audit_sinks=[StderrSinkConfig()],
+    )
+    t_b = TenantConfig(
+        tenant_id="tenant_b",
+        indexer_url="https://indexer.example.com:9200",
+        verify_tls=False,
+        default_rbac_role="readonly",
+        oauth_issuer="https://issuer-b.example.com",
+        oauth_audience="aud",
+        audit_sinks=[StderrSinkConfig()],
+    )
+    result = _build_per_tenant_sinks([t_a, t_b], indexer_pool=None)
+    assert set(result.keys()) == {"tenant_a", "tenant_b"}
+    assert len(result["tenant_a"]) == 1
+    assert len(result["tenant_b"]) == 1
+
+
+def test_build_per_tenant_sinks_raises_with_tenant_id_in_message() -> None:
+    """If a tenant's _build_sinks fails, error message names the tenant."""
+    from wazuh_mcp.server import _build_per_tenant_sinks
+    from wazuh_mcp.tenancy.config import TenantConfig
+    from wazuh_mcp.tenancy.m4_config import WazuhIndexerSinkConfig
+
+    # wazuh_indexer sink in stdio mode (indexer_pool=None) raises.
+    t_bad = TenantConfig(
+        tenant_id="tenant_bad",
+        indexer_url="https://indexer.example.com:9200",
+        verify_tls=False,
+        default_rbac_role="readonly",
+        oauth_issuer="https://issuer-bad.example.com",
+        oauth_audience="aud",
+        audit_sinks=[WazuhIndexerSinkConfig(index_prefix="bad-audit")],
+    )
+    with pytest.raises(RuntimeError, match="tenant 'tenant_bad' failed to build"):
+        _build_per_tenant_sinks([t_bad], indexer_pool=None)
