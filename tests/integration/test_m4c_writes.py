@@ -1,23 +1,56 @@
 """M4c integration tests — write.restart_manager, cluster.status, multi-agent isolate.
 
 Marked @requires_manager — runs nightly on amd64 CI, manual dispatch
-otherwise. Reuses the conftest's shared mcp_http_server (port 8765) +
-keycloak_token fixtures. _mcp_session is inlined per the M4b precedent
-(pytest-asyncio cancel-scope task-locality requirement).
+otherwise. Spawns a dedicated MCP HTTP server on port 8772 with
+``default_rbac_role: admin`` so cluster.status (read) and write tools
+are allowed. The conftest's `mcp_http_server` (port 8765) defaults to
+``analyst`` which excludes cluster.* and write.*. _mcp_session is
+inlined per the M4b precedent (pytest-asyncio cancel-scope
+task-locality requirement).
 """
 
 from __future__ import annotations
 
 import asyncio
+import tempfile
 import time
+from collections.abc import Iterator
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 import httpx
 import pytest
 
-from tests.integration.conftest import MCP_URL  # type: ignore[import-not-found]
+from tests.integration.test_m4b_writes import (  # type: ignore[import-not-found]
+    _spawn_server,
+    _write_writes_tenant,
+)
 
 pytestmark = [pytest.mark.integration, pytest.mark.requires_manager]
+
+
+MCP_M4C_URL = "http://127.0.0.1:8772"
+
+
+@pytest.fixture(scope="module")
+def mcp_http_server_m4c() -> Iterator[None]:
+    """MCP HTTP server on 8772 with admin default role.
+
+    Uses M4b's _write_writes_tenant helper (admin role + write_allowlist=null
+    + active_response_allowlist=[block-ip]) so cluster.status, write.restart_manager,
+    and multi-agent write.isolate_agent all clear RBAC at call time.
+    """
+    cfg_dir = Path(tempfile.mkdtemp(prefix="wm-m4c-"))
+    _write_writes_tenant(cfg_dir, bind_port=8772, with_audit_sink=False)
+    proc = _spawn_server(cfg_dir, MCP_M4C_URL, "m4c")
+    try:
+        yield None
+    finally:
+        proc.terminate()
+        try:
+            proc.wait(timeout=5)
+        except Exception:
+            proc.kill()
 
 
 @asynccontextmanager
@@ -53,8 +86,8 @@ async def _mcp_session(url: str, token: str):
 
 
 @pytest.mark.asyncio
-async def test_cluster_status_reads_node_metadata(mcp_http_server, keycloak_token) -> None:
-    async with _mcp_session(MCP_URL, keycloak_token()) as session:
+async def test_cluster_status_reads_node_metadata(mcp_http_server_m4c, keycloak_token) -> None:
+    async with _mcp_session(MCP_M4C_URL, keycloak_token()) as session:
         result = await session.call_tool("cluster.status", {})
         assert not result.isError, f"cluster.status returned error: {result}"
         payload = result.structuredContent
@@ -67,9 +100,9 @@ async def test_cluster_status_reads_node_metadata(mcp_http_server, keycloak_toke
 
 
 @pytest.mark.asyncio
-async def test_restart_manager_node_scope_completes(mcp_http_server, keycloak_token) -> None:
+async def test_restart_manager_node_scope_completes(mcp_http_server_m4c, keycloak_token) -> None:
     """Restart this node, then poll cluster.status until running again."""
-    async with _mcp_session(MCP_URL, keycloak_token()) as session:
+    async with _mcp_session(MCP_M4C_URL, keycloak_token()) as session:
         result = await session.call_tool(
             "write.restart_manager",
             {"scope": "node", "confirm": True},
@@ -96,10 +129,10 @@ async def test_restart_manager_node_scope_completes(mcp_http_server, keycloak_to
 
 
 @pytest.mark.asyncio
-async def test_multi_agent_isolate_one_agent(mcp_http_server, keycloak_token) -> None:
+async def test_multi_agent_isolate_one_agent(mcp_http_server_m4c, keycloak_token) -> None:
     """Exercise the agent_ids: list[str] shape via the URL-builder path
     on the single-agent CI fixture."""
-    async with _mcp_session(MCP_URL, keycloak_token()) as session:
+    async with _mcp_session(MCP_M4C_URL, keycloak_token()) as session:
         result = await session.call_tool(
             "write.isolate_agent",
             {"agent_ids": ["001"], "confirm": True},
