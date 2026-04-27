@@ -119,3 +119,59 @@ async def test_write_allowlist_denies_per_call() -> None:
     cause = exc_info.value.__cause__
     assert isinstance(cause, WazuhError)
     assert cause.code == "forbidden"
+
+
+@pytest.mark.asyncio
+async def test_restart_manager_and_cluster_status_registered() -> None:
+    """Both new tools appear in list_tools."""
+    from mcp.server.fastmcp import FastMCP
+
+    from wazuh_mcp.auth.session import Session
+    from wazuh_mcp.observability.audit import MultiSinkAuditEmitter
+    from wazuh_mcp.rate_limit.limiter import InProcessRateLimiter
+    from wazuh_mcp.server import _register_everything
+    from wazuh_mcp.tenancy.config import RateLimitConfig
+    from wazuh_mcp.transport.session_ctx import set_current_session
+
+    mcp_app = FastMCP(name="test")
+    audit = MultiSinkAuditEmitter(sinks=None)
+    limiter = InProcessRateLimiter(default=RateLimitConfig())
+
+    def _allow_all(session: Session) -> dict[str, list[str]]:
+        return {"admin": ["*"]}
+
+    def _no_filter(session: Session) -> list[str] | None:
+        return None
+
+    def _no_ar(session: Session) -> list[str]:
+        return []
+
+    class _Pool:
+        async def acquire(self, tenant_id: str):
+            return None
+
+    _register_everything(
+        mcp_app,
+        indexer_pool=_Pool(),
+        server_api_pool=_Pool(),
+        audit_emitter=audit,
+        limiter=limiter,
+        rbac_policy=_allow_all,
+        write_allowlist_policy=_no_filter,
+        ar_allowlist_policy=_no_ar,
+    )
+
+    set_current_session(
+        Session(
+            user_id="alice",
+            tenant_id="tenant_a",
+            rbac_role="admin",
+            auth_method="oauth",
+            wazuh_user=None,
+        )
+    )
+
+    tools = await mcp_app.list_tools()
+    names = {t.name for t in tools}
+    assert "write.restart_manager" in names
+    assert "cluster.status" in names

@@ -129,9 +129,10 @@ async def test_rbac_list_tools_filter_allows_admin_denies_empty() -> None:
         handler = mcp_app._mcp_server.request_handlers[mt.ListToolsRequest]
         result = await handler(req)
         tools = result.root.tools  # ty: ignore[unresolved-attribute]
-        # M4c T8: registration is unconditional. 17 read-only tools + 7 M4b
-        # writes = 24 (was 17 under M4b's registration-time write_allowlist).
-        assert len(tools) == 24
+        # M4c T12: registration is unconditional. 18 read-only tools (17 M3
+        # reads + cluster.status) + 8 writes (7 M4b writes + write.restart_manager)
+        # = 26 (was 24 before T12 wired the new cluster + restart_manager pair).
+        assert len(tools) == 26
 
         # Swap in a deny-all policy and re-install to exercise filtering.
         _install_rbac_hooks(mcp_app, rbac_policy=_policy_deny_all, audit_emitter=audit)

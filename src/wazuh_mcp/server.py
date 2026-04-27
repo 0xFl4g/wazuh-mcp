@@ -855,6 +855,32 @@ def _register_everything(
         result_model=HuntQueryResult,
     )
 
+    # ---------- cluster.* ----------
+    from wazuh_mcp.tools.cluster import (
+        ClusterStatusArgs,
+        ClusterStatusResult,
+    )
+    from wazuh_mcp.tools.cluster import cluster_status as _cluster_status
+
+    async def _cluster_status_inner(**kwargs: Any) -> Any:
+        args = ClusterStatusArgs(**kwargs)
+        session = current_session()
+        sapi = await server_api_pool.acquire(session.tenant_id)
+        return await _cluster_status(args=args, session=session, server_api=sapi)
+
+    _wrap(
+        tool_name="cluster.status",
+        handler=_cluster_status_inner,
+        description=(
+            "Reads the Wazuh cluster's status: clustering enabled flag, running "
+            "state, and per-node name/type/status. Use to verify cluster "
+            "readiness pre/post manager restart."
+        ),
+        meta={"toolset": "cluster"},
+        args_model=ClusterStatusArgs,
+        result_model=ClusterStatusResult,
+    )
+
     # ---------- fim.* ----------
     from wazuh_mcp.tools.fim import (
         FimChangesArgs,
@@ -1022,6 +1048,8 @@ def _register_everything(
         IsolateAgentArgs,
         RemoveAgentFromGroupArgs,
         RestartAgentArgs,
+        RestartManagerArgs,
+        RestartManagerResult,
         RunActiveResponseArgs,
         UpdateRuleArgs,
         WriteResult,
@@ -1040,6 +1068,9 @@ def _register_everything(
     )
     from wazuh_mcp.tools.write import (
         restart_agent as _restart_agent,
+    )
+    from wazuh_mcp.tools.write import (
+        restart_manager as _restart_manager,
     )
     from wazuh_mcp.tools.write import (
         run_active_response as _run_active_response,
@@ -1231,5 +1262,31 @@ def _register_everything(
             audit=audit_emitter,
             args_model=RunActiveResponseArgs,
             result_model=WriteResult,
+        )
+    )
+
+    async def _restart_manager_inner(**kwargs: Any) -> Any:
+        args = RestartManagerArgs(**kwargs)
+        session = current_session()
+        _check_write_allowed(session, "write.restart_manager")
+        sapi = await server_api_pool.acquire(session.tenant_id)
+        return await _restart_manager(args=args, session=session, server_api=sapi)
+
+    mcp_app.tool(
+        name="write.restart_manager",
+        description=_write_desc_prefix
+        + "Restarts the Wazuh manager (scope='cluster' restarts the entire cluster; "
+        + "scope='node' restarts only this node). Required to activate uploaded rule "
+        + "files. Cycles every connected agent connection.",
+        meta={"toolset": "writes"},
+    )(
+        instrumented_tool(
+            tool_name="write.restart_manager",
+            handler=_restart_manager_inner,
+            rbac_policy=rbac_policy,
+            limiter=limiter,
+            audit=audit_emitter,
+            args_model=RestartManagerArgs,
+            result_model=RestartManagerResult,
         )
     )
