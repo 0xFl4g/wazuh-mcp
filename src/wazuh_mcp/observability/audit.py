@@ -18,7 +18,7 @@ from __future__ import annotations
 import contextlib
 import hashlib
 import json
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 from typing import Any
 
@@ -33,52 +33,86 @@ def _hash_args(args: dict[str, Any]) -> str:
 
 
 class MultiSinkAuditEmitter:
-    """Fan-out audit emitter. Each emit enqueues on every sink's async queue."""
+    """Dual-track fan-out audit emitter.
+
+    `emit(session=...)` fans out to:
+      * every sink in ``self.global_sinks`` (always — operator's safety net)
+      * every sink in ``self.per_tenant_sinks.get(session.tenant_id, [])`` (overlay)
+
+    Unknown tenant_id (no entry) routes to globals only — audit visibility
+    preserved for the unknown-tenant defense-in-depth path (M4c resolver
+    miss audit, M4d non-registered-tenant audit, etc.).
+    """
 
     def __init__(
         self,
         *,
-        sinks: Sequence[AuditSink] | None = None,
+        global_sinks: Sequence[AuditSink] | None = None,
+        per_tenant_sinks: Mapping[str, Sequence[AuditSink]] | None = None,
         drop_metric: Any | None = None,
     ) -> None:
-        _sinks: list[AuditSink] = list(sinks) if sinks else [StderrSink()]
-        self.sinks: list[AuditSink] = _sinks
+        self.global_sinks: list[AuditSink] = (
+            list(global_sinks) if global_sinks is not None else [StderrSink()]
+        )
+        self.per_tenant_sinks: dict[str, list[AuditSink]] = {
+            tid: list(sinks) for tid, sinks in (per_tenant_sinks or {}).items()
+        }
+        # Flatten for uniform start/stop iteration with rollback semantics.
+        self._all_sinks: list[AuditSink] = self.global_sinks + [
+            s for sinks in self.per_tenant_sinks.values() for s in sinks
+        ]
+        # Public alias for backwards-compat readability — some external
+        # introspection paths (and the M4a drop_metric wiring) reach for
+        # `self.sinks`. Keep it as the flat list so existing iterations
+        # continue to work.
+        self.sinks: list[AuditSink] = self._all_sinks
         if drop_metric is not None:
-            for s in self.sinks:
-                if isinstance(s, QueuedSink):
-                    sink_name = getattr(s, "name", s.__class__.__name__)
+            self._wire_drop_metric(drop_metric)
 
-                    def _recorder(
-                        event: dict[str, Any],
-                        reason: str,
-                        _name: str = sink_name,
-                    ) -> None:
-                        drop_metric.add(1, {"sink": _name, "reason": reason})
+    def _wire_drop_metric(self, drop_metric: Any) -> None:
+        # Tenant label is "<global>" for global sinks; tenant_id for per-tenant
+        # sinks. Identity-keyed lookup so two same-config sinks (different
+        # tenants) get distinct labels.
+        global_ids = {id(s) for s in self.global_sinks}
+        per_tenant_owner: dict[int, str] = {}
+        for tid, sinks in self.per_tenant_sinks.items():
+            for s in sinks:
+                per_tenant_owner[id(s)] = tid
+        for s in self._all_sinks:
+            if not isinstance(s, QueuedSink):
+                continue
+            tenant_label = (
+                "<global>" if id(s) in global_ids else per_tenant_owner.get(id(s), "<unknown>")
+            )
+            sink_name = getattr(s, "name", s.__class__.__name__)
 
-                    s._record_drop = _recorder  # ty: ignore[invalid-assignment]
+            def _recorder(
+                event: dict[str, Any],
+                reason: str,
+                _name: str = sink_name,
+                _tenant: str = tenant_label,
+            ) -> None:
+                drop_metric.add(1, {"sink": _name, "tenant": _tenant, "reason": reason})
+
+            s._record_drop = _recorder  # ty: ignore[invalid-assignment]
 
     async def start(self) -> None:
-        # Start sinks in order, rolling back any that did start if a later
-        # sink's start() raises. Otherwise stop() would later run on a
-        # never-started sink and mask the real failure.
+        # Start sinks in flat order; roll back on failure.
         started: list[AuditSink] = []
         try:
-            for s in self.sinks:
+            for s in self._all_sinks:
                 await s.start()
                 started.append(s)
         except BaseException:
             for s in reversed(started):
-                # Best-effort cleanup; the original exception wins.
                 with contextlib.suppress(Exception):
                     await s.stop()
             raise
 
     async def stop(self) -> None:
-        # Best-effort: each sink's stop() is independent; one failing must
-        # not prevent the others from shutting down. Collect and re-raise
-        # as an ExceptionGroup so callers can inspect every failure.
+        # Best-effort: each sink's stop() is independent; collect failures.
         errors: list[BaseException] = []
-        for s in self.sinks:
+        for s in self._all_sinks:
             try:
                 await s.stop()
             except BaseException as exc:
@@ -113,7 +147,9 @@ class MultiSinkAuditEmitter:
             event["error_code"] = error_code
         if error_reason is not None:
             event["error_reason"] = error_reason
-        for sink in self.sinks:
+        for sink in self.global_sinks:
+            sink.submit(event)
+        for sink in self.per_tenant_sinks.get(session.tenant_id, []):
             sink.submit(event)
 
 

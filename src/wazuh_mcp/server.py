@@ -219,7 +219,7 @@ def build_app(cfg: AppConfig, audit: MultiSinkAuditEmitter | None = None) -> Fas
     audit_emitter = (
         audit
         or cfg.audit
-        or MultiSinkAuditEmitter(sinks=_build_sinks(cfg.tenant, indexer_pool=None))
+        or MultiSinkAuditEmitter(global_sinks=_build_sinks(cfg.tenant, indexer_pool=None))
     )
     limiter = cfg.limiter or InProcessRateLimiter(
         default=cfg.tenant.rate_limit,
@@ -418,7 +418,7 @@ def build_http_app(http_cfg: HttpAppConfig, audit: MultiSinkAuditEmitter | None 
     sinks: list[AuditSink] = []
     if http_cfg.tenant is not None:
         sinks = _build_sinks(http_cfg.tenant, indexer_pool=http_cfg.pool)
-    audit_emitter = audit or http_cfg.audit or MultiSinkAuditEmitter(sinks=sinks or None)
+    audit_emitter = audit or http_cfg.audit or MultiSinkAuditEmitter(global_sinks=sinks or None)
 
     if http_cfg.limiter is not None:
         limiter = http_cfg.limiter
