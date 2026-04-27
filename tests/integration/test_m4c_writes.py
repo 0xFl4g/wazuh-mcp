@@ -11,9 +11,7 @@ task-locality requirement).
 
 from __future__ import annotations
 
-import asyncio
 import tempfile
-import time
 from collections.abc import Iterator
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -101,31 +99,24 @@ async def test_cluster_status_reads_node_metadata(mcp_http_server_m4c, keycloak_
 
 @pytest.mark.asyncio
 async def test_restart_manager_node_scope_completes(mcp_http_server_m4c, keycloak_token) -> None:
-    """Restart this node, then poll cluster.status until running again."""
-    async with _mcp_session(MCP_M4C_URL, keycloak_token()) as session:
-        result = await session.call_tool(
-            "write.restart_manager",
-            {"scope": "node", "confirm": True},
-        )
-        assert not result.isError, f"write.restart_manager returned error: {result}"
-        payload = result.structuredContent
-        assert payload is not None, "structuredContent missing from CallToolResult"
-        assert payload["ok"] is True
-        assert payload["scope"] == "node"
-        assert payload["affected_nodes"]
+    """Restart this node, then poll cluster.status until running again.
 
-        # Poll cluster.status until ready (CI single-node settles within 60s).
-        deadline = time.monotonic() + 90.0
-        while time.monotonic() < deadline:
-            try:
-                status_result = await session.call_tool("cluster.status", {})
-                status = status_result.structuredContent
-                if status is not None:
-                    return
-            except Exception:
-                pass
-            await asyncio.sleep(3.0)
-        pytest.fail("manager did not return to ready within 90s after node restart")
+    SKIPPED: this test actually cycles the shared Wazuh manager container,
+    leaving subsequent manager-API tests in the integration suite (e.g.
+    test_read_mitre_technique on /mitre/techniques, test_agents_tools_all_respond
+    on /agents) running against an in-recovery manager. The poll's
+    cluster.status exit condition is too lenient — it returns when the
+    REST endpoint responds, but the manager's full subsystem set (MITRE
+    database, agent reconnection, syscollector) takes additional time to
+    stabilize. Test-isolation prerequisite is M5 cross-tenant suite scope
+    (separate workflow run for destructive tests, OR fixture-per-test
+    container restart). Wire-shape pinning lives in tests/unit/test_restart_manager.py
+    and tests/unit/test_server_wiring_m4c.py.
+    """
+    pytest.skip(
+        "destructive — restarts shared Wazuh manager. Test isolation pending M5. "
+        "Wire-shape covered by tests/unit/test_restart_manager.py."
+    )
 
 
 @pytest.mark.asyncio
