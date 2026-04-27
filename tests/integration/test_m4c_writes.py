@@ -9,7 +9,6 @@ keycloak_token fixtures. _mcp_session is inlined per the M4b precedent
 from __future__ import annotations
 
 import asyncio
-import json
 import time
 from contextlib import asynccontextmanager
 
@@ -57,7 +56,9 @@ async def _mcp_session(url: str, token: str):
 async def test_cluster_status_reads_node_metadata(mcp_http_server, keycloak_token) -> None:
     async with _mcp_session(MCP_URL, keycloak_token()) as session:
         result = await session.call_tool("cluster.status", {})
-        payload = json.loads(result.content[0].text)
+        assert not result.isError, f"cluster.status returned error: {result}"
+        payload = result.structuredContent
+        assert payload is not None, "structuredContent missing from CallToolResult"
         assert payload["enabled"] in (True, False)
         # Single-node CI fixture: even with clustering disabled, the read succeeds.
         if payload["enabled"]:
@@ -73,7 +74,9 @@ async def test_restart_manager_node_scope_completes(mcp_http_server, keycloak_to
             "write.restart_manager",
             {"scope": "node", "confirm": True},
         )
-        payload = json.loads(result.content[0].text)
+        assert not result.isError, f"write.restart_manager returned error: {result}"
+        payload = result.structuredContent
+        assert payload is not None, "structuredContent missing from CallToolResult"
         assert payload["ok"] is True
         assert payload["scope"] == "node"
         assert payload["affected_nodes"]
@@ -83,7 +86,7 @@ async def test_restart_manager_node_scope_completes(mcp_http_server, keycloak_to
         while time.monotonic() < deadline:
             try:
                 status_result = await session.call_tool("cluster.status", {})
-                status = json.loads(status_result.content[0].text)
+                status = status_result.structuredContent
                 if status is not None:
                     return
             except Exception:
@@ -101,7 +104,9 @@ async def test_multi_agent_isolate_one_agent(mcp_http_server, keycloak_token) ->
             "write.isolate_agent",
             {"agent_ids": ["001"], "confirm": True},
         )
-        payload = json.loads(result.content[0].text)
+        assert not result.isError, f"write.isolate_agent returned error: {result}"
+        payload = result.structuredContent
+        assert payload is not None, "structuredContent missing from CallToolResult"
         # Whether the isolate active-response actually fires depends on the
         # manager's ossec.conf wiring (configured during the integration
         # restoration session). Either ok=True with affected_agents=["001"]
