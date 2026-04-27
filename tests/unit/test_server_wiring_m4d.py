@@ -23,3 +23,25 @@ def test_build_app_constructs_limiter_with_per_tenant() -> None:
 
     src = inspect.getsource(server_mod.build_app)
     assert "per_tenant=" in src
+
+
+def test_build_http_app_constructs_audit_with_per_tenant_sinks() -> None:
+    """build_http_app passes per_tenant_sinks= to MultiSinkAuditEmitter."""
+    import inspect
+
+    import wazuh_mcp.server as server_mod
+
+    src = inspect.getsource(server_mod.build_http_app)
+    assert "per_tenant_sinks=" in src
+    assert "_build_per_tenant_sinks" in src
+
+
+def test_build_app_constructs_audit_with_per_tenant_sinks() -> None:
+    """Stdio build_app also passes per_tenant_sinks=."""
+    import inspect
+
+    import wazuh_mcp.server as server_mod
+
+    src = inspect.getsource(server_mod.build_app)
+    assert "per_tenant_sinks=" in src
+    assert "_build_per_tenant_sinks" in src

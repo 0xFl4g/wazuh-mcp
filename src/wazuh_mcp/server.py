@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import importlib.metadata
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -140,6 +140,25 @@ def _build_sinks(tenant: TenantConfig, *, indexer_pool: Any) -> list[AuditSink]:
     return sinks
 
 
+def _build_per_tenant_sinks(
+    all_tenants: Sequence[TenantConfig], *, indexer_pool: Any
+) -> dict[str, list[AuditSink]]:
+    """Build per-tenant sink dict for MultiSinkAuditEmitter.
+
+    Wraps each tenant's _build_sinks call with a tenant-id-tagged error so
+    operators know which tenant's audit_sinks: config has the issue.
+    """
+    out: dict[str, list[AuditSink]] = {}
+    for t in all_tenants:
+        try:
+            out[t.tenant_id] = _build_sinks(t, indexer_pool=indexer_pool)
+        except Exception as e:
+            raise RuntimeError(
+                f"audit sinks for tenant {t.tenant_id!r} failed to build: {e}"
+            ) from e
+    return out
+
+
 def _install_rbac_hooks(
     mcp_app: FastMCP,
     *,
@@ -219,7 +238,9 @@ def build_app(cfg: AppConfig, audit: MultiSinkAuditEmitter | None = None) -> Fas
     audit_emitter = (
         audit
         or cfg.audit
-        or MultiSinkAuditEmitter(global_sinks=_build_sinks(cfg.tenant, indexer_pool=None))
+        or MultiSinkAuditEmitter(
+            per_tenant_sinks=_build_per_tenant_sinks([cfg.tenant], indexer_pool=None),
+        )
     )
     limiter = cfg.limiter or InProcessRateLimiter(
         default=cfg.tenant.rate_limit,
@@ -415,10 +436,15 @@ def build_http_app(http_cfg: HttpAppConfig, audit: MultiSinkAuditEmitter | None 
     """
     init_otel(service_version=_service_version())
 
-    sinks: list[AuditSink] = []
-    if http_cfg.tenant is not None:
-        sinks = _build_sinks(http_cfg.tenant, indexer_pool=http_cfg.pool)
-    audit_emitter = audit or http_cfg.audit or MultiSinkAuditEmitter(global_sinks=sinks or None)
+    all_tenants_for_audit = list(http_cfg.registry.all_tenants()) if http_cfg.registry else []
+    per_tenant_sinks = _build_per_tenant_sinks(all_tenants_for_audit, indexer_pool=http_cfg.pool)
+    audit_emitter = (
+        audit
+        or http_cfg.audit
+        or MultiSinkAuditEmitter(
+            per_tenant_sinks=per_tenant_sinks,
+        )
+    )
 
     if http_cfg.limiter is not None:
         limiter = http_cfg.limiter
