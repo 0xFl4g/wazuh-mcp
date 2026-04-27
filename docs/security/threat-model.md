@@ -91,6 +91,14 @@ Before deploying M2 to production:
 - [ ] `WAZUH_MCP_CONFIG_DIR` points at a path only the service user can read.
 - [ ] Structured logs are shipped to a SIEM (ideally back to the same Wazuh the MCP server talks to).
 
+## M4c additions
+
+- **Per-tenant policy resolution.** `role_tool_allowlist`, `write_allowlist`, and `active_response_allowlist` now resolve at call time against `session.tenant_id` via three resolver factories in `src/wazuh_mcp/rbac/resolver.py`. Closes the multi-tenant policy-bleed: a session minted for tenant B no longer sees tenant A's allowlists. Single-tenant deployments (stdio + single-tenant HTTP) are behavior-equivalent because both modes route through the same factories with a one-entry registry.
+- **Defense-in-depth fail-closed on unknown tenant_id.** When `registry.get(session.tenant_id)` raises `KeyError` (programming error or DB-driver lag in a future driver swap), each resolver returns its safe-default — `{}` for RBAC, `[]` for both write filters. Empty role table → every tool denies in `list_tools` and `call_tool`. Each KeyError emits an audit event with sentinel `tool="<rbac.resolve>"`, `error_code="forbidden"`, `error_reason="tenant_not_registered"` (deduplication intentionally omitted; rare event).
+- **Write-tool registration is uniform across tenants.** All 8 writes register unconditionally; per-tenant denial is purely call-time. The M4b "write_allowlist=[] hides tools from list_tools" surface-narrowing behavior is dropped in favor of multi-tenant integrity (uniform tool surface). Operator-visible delta documented in `docs/deploy/m4c-multi-tenant.md` §3.
+- **`write.restart_manager` blast radius.** New tool restarts the Wazuh manager (`scope=node` → single node; `scope=cluster` → coordinator-driven full-cluster cycle). Two-layer M4b allowlist (`write_allowlist` + RBAC role) is the floor. Wazuh's API enforces cluster-admin role independently — an MCP-allowed call still fails at Wazuh if the API user lacks the role. Audit captures `scope` and `affected_nodes` from the pre-flight `cluster_status` read so post-incident review can reconstruct who restarted what.
+- **Multi-agent active-response.** `agent_ids: list[str]` (1≤N≤50) replaces single-agent shape. Hypothesis-fuzzed URL-injection invariant pins that no agent_id can contain a comma — Wazuh agent IDs are numeric. Partial-failure semantics: `WriteResult.failed_agents` carries per-agent reasons; `ok=true` iff every agent succeeded; no exception is raised for partial failure (the LLM caller decides whether to retry). Catastrophic API errors still raise.
+
 ## M3 additions
 
 - **Server API client JWT hygiene.** Tokens are signature-verified by Wazuh at use; the client only decodes `exp` to schedule refresh. Credentials never appear in repr/logs/errors. Mint stampedes prevented via `asyncio.Lock`.

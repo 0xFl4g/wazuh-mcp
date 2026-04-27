@@ -2,7 +2,7 @@
 
 Model Context Protocol server for Wazuh SIEM/XDR.
 
-**Status:** M3 in progress. Multi-tenant, OAuth 2.1 + API-key auth, stdio + Streamable HTTP transports. Full tool surface (17 tools across 6 domains, 3 resources, 3 prompts). See `docs/superpowers/specs/` for design specs per milestone.
+**Status:** v0.6.0-m4c. Multi-tenant policy resolution, full read+write tool surface (18 reads + 8 writes), real secret backends, RBAC + rate-limit + audit chokepoint, OTel + Prom metrics, OAuth 2.1 + API-key auth, stdio + Streamable HTTP transports. See `docs/superpowers/specs/` for design specs per milestone.
 
 ## Tools (17)
 
@@ -119,13 +119,20 @@ Integration tests (docker compose required):
 ## Milestones
 
 - **M1 (v0.1.0-m1)** — walking skeleton: stdio, single tenant, one tool.
-- **M2 (v0.2.0-m2)** — this release. Adds Streamable HTTP transport, OAuth 2.1 + API-key auth, multi-tenant session routing, per-tenant IndexerClient pool. Tool surface unchanged.
-- **M3 (planned)** — full tool surface (~14 tools), Server API client, resources, prompts.
-- **M4 (planned)** — production hardening: real secret backends, RBAC-aware tools, rate limits, OTel, write-tool scaffolding.
-- **M5 (planned)** — ship-gate: eval harness, Wazuh LTS matrix CI, cross-tenant leak suite, full docs.
+- **M2 (v0.2.0-m2)** — Streamable HTTP transport, OAuth 2.1 + API-key auth, multi-tenant session routing, per-tenant IndexerClient pool.
+- **M3 (v0.3.0-m3)** — full read tool surface (17 tools across 6 domains, 3 resources, 3 prompts), Server API client, hunt-query grammar.
+- **M4a (v0.4.0-m4a)** — production hardening: real secret backends (AWS SM / Vault / SQLite+age), RBAC at list+call time, per-tenant + session token-bucket rate limits, OTel + Prom metrics, multi-sink audit emitter, `@instrumented_tool` chokepoint.
+- **M4b (v0.5.0-m4b)** — write-tool surface: 7 `write.*` tools (agent isolate/restart, group add/remove, rule create/update, active-response), `confirm: Literal[True]` safety contract, two-layer per-tenant allowlist, `run_as` attribution, double-audit emit.
+- **v0.5.1** — integration-restoration patch: 9 latent bugs fixed after the never-running integration suite was made to run (decorator schema collapse, missing IndexerClient methods, wrong rule-upload + active-response wire shapes).
+- **M4c (v0.6.0-m4c)** — per-tenant policy resolution (closes the multi-tenant policy-bleed gap), `write.restart_manager` + `cluster.status` (rule-activation flow inside MCP), multi-agent `run_active_response` (`agent_ids: list[str]`), `confirm_required` cleanup. See `docs/deploy/m4c-multi-tenant.md`.
+- **M5 (planned)** — ship-gate: eval harness, Wazuh LTS matrix CI, cross-tenant leak suite, multi-manager integration fixture, Helm chart, full docs.
 
 See `docs/superpowers/specs/` for full specs per milestone.
 
-## Deploying M2
+## Deploying
 
-See `docs/deploy/m2-http.md` for the full remote-deployment guide (uvicorn + Caddy + OAuth IdP).
+- M2 baseline (uvicorn + Caddy + OAuth IdP): `docs/deploy/m2-http.md`
+- M3 tool reference: `docs/deploy/m3-tools.md`
+- M4a (secrets, observability, audit): `docs/deploy/m4a-secrets.md`, `m4a-observability.md`, `m4a-audit.md`
+- M4b (write tools): `docs/deploy/m4b-writes.md`
+- M4c (multi-tenant + new writes): `docs/deploy/m4c-multi-tenant.md`

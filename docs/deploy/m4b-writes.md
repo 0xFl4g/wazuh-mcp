@@ -1,5 +1,13 @@
 # M4b — Write tools
 
+> **M4c update (v0.6.0-m4c, 2026-04-27).** The M4b two-layer allowlist model below is preserved — but three operator-visible details have shifted in M4c:
+>
+> 1. `write.run_active_response` and `write.isolate_agent` now take `agent_ids: list[str]` (1-50) instead of `agent_id: str`. Existing single-agent callers update from `agent_id="001"` to `agent_ids=["001"]`. Wazuh's `agents_list` wire shape is preserved.
+> 2. `write_allowlist=[]` no longer hides write tools from `list_tools` — all writes register unconditionally and per-tenant denial happens at handler time. The behavior previously described as "Disable all writes — no write tool registers" is now "all writes registered but every call denies with `forbidden`".
+> 3. `confirm_required` is removed from `SAFE_CODES` (it never fired at runtime; the `confirm: Literal[True]` parse gate IS the confirm contract).
+>
+> A new tool `write.restart_manager` ships in M4c plus a paired read tool `cluster.status`. Per-tenant policy now resolves at call time against `session.tenant_id` — closing the multi-tenant policy-bleed gap. See `m4c-multi-tenant.md` for the full migration guide.
+
 ## Overview
 
 M4b adds seven `write.*` tools that mutate Wazuh state: agent isolation, agent restart, group membership (add/remove), rule-file upload (create/update), and active-response dispatch. Every write tool enforces the same safety model — a `confirm: Literal[True]` argument the caller MUST set, a two-layer allowlist (per-tenant `write_allowlist` gates which writes register on the MCP surface at all, and `role_tool_allowlist` gates which roles see them), and `run_as` attribution threaded from the OAuth `wazuh_user` claim into every Server API call. Every write produces exactly two audit events — one `write.requested` pre-call, one completion — so operators see intent even when the handler fails, is cancelled, or is rejected for missing confirm. Active-response is locked down harder than the rest: `active_response_allowlist` defaults to empty, which means `write.run_active_response` denies every command until the operator explicitly lists the ones their Wazuh deployment is configured to run.
