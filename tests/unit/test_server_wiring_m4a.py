@@ -75,7 +75,7 @@ def test_rbac_list_tools_handler_identity_pinning() -> None:
     dict). If a future SDK bump changes the dispatcher, this fails loudly.
     """
     mcp_app = FastMCP(name="test")
-    audit = AuditEmitter(sinks=[StderrSink(stream=io.StringIO())])
+    audit = AuditEmitter(global_sinks=[StderrSink(stream=io.StringIO())])
     limiter = InProcessRateLimiter(default=RateLimitConfig())
     _register_everything(
         mcp_app,
@@ -104,7 +104,7 @@ async def test_rbac_list_tools_filter_allows_admin_denies_empty() -> None:
     """End-to-end: list_tools with admin role returns every tool; with a
     role that has no patterns returns an empty list."""
     mcp_app = FastMCP(name="test")
-    audit = AuditEmitter(sinks=[StderrSink(stream=io.StringIO())])
+    audit = AuditEmitter(global_sinks=[StderrSink(stream=io.StringIO())])
     limiter = InProcessRateLimiter(default=RateLimitConfig())
     _register_everything(
         mcp_app,
@@ -156,7 +156,7 @@ async def test_rbac_call_tool_deny_emits_forbidden_audit() -> None:
     import mcp.types as mt
 
     out = io.StringIO()
-    audit = AuditEmitter(sinks=[StderrSink(stream=out)])
+    audit = AuditEmitter(global_sinks=[StderrSink(stream=out)])
     await audit.start()
     try:
         mcp_app = FastMCP(name="test")
@@ -267,7 +267,7 @@ def test_http_lifespan_starts_audit_emitter_and_serves_metrics() -> None:
         def submit(self, event):  # pragma: no cover - unused in this test
             pass
 
-    audit = AuditEmitter(sinks=[_SpySink()])
+    audit = AuditEmitter(global_sinks=[_SpySink()])
     mcp_app = FastMCP(name="test")
     asgi = build_asgi_app(
         mcp_app=mcp_app,

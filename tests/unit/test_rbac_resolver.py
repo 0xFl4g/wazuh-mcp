@@ -60,7 +60,7 @@ def _session(tenant_id: str = "tenant_a", role: str = "admin") -> Session:
 
 def test_rbac_policy_returns_default_when_override_absent() -> None:
     sink = _CapturingSink()
-    emitter = MultiSinkAuditEmitter(sinks=[sink])
+    emitter = MultiSinkAuditEmitter(global_sinks=[sink])
     registry = SingleTenantRegistry(_cfg("tenant_a", role_tool_allowlist=None))
     policy = make_rbac_policy(registry, emitter)
     result = policy(_session("tenant_a"))
@@ -72,7 +72,7 @@ def test_rbac_policy_returns_default_when_override_absent() -> None:
 
 def test_rbac_policy_applies_tenant_override() -> None:
     sink = _CapturingSink()
-    emitter = MultiSinkAuditEmitter(sinks=[sink])
+    emitter = MultiSinkAuditEmitter(global_sinks=[sink])
     override = {"admin": ["alerts.*"], "responder": ["write.isolate_agent"]}
     registry = SingleTenantRegistry(_cfg("tenant_a", role_tool_allowlist=override))
     policy = make_rbac_policy(registry, emitter)
@@ -85,7 +85,7 @@ def test_rbac_policy_applies_tenant_override() -> None:
 
 def test_rbac_policy_unknown_tenant_returns_empty_dict() -> None:
     sink = _CapturingSink()
-    emitter = MultiSinkAuditEmitter(sinks=[sink])
+    emitter = MultiSinkAuditEmitter(global_sinks=[sink])
     registry = SingleTenantRegistry(_cfg("tenant_a"))
     policy = make_rbac_policy(registry, emitter)
     result = policy(_session("tenant_phantom"))
@@ -94,7 +94,7 @@ def test_rbac_policy_unknown_tenant_returns_empty_dict() -> None:
 
 def test_rbac_policy_unknown_tenant_emits_audit() -> None:
     sink = _CapturingSink()
-    emitter = MultiSinkAuditEmitter(sinks=[sink])
+    emitter = MultiSinkAuditEmitter(global_sinks=[sink])
     registry = SingleTenantRegistry(_cfg("tenant_a"))
     policy = make_rbac_policy(registry, emitter)
     policy(_session("tenant_phantom"))
@@ -112,7 +112,7 @@ def test_rbac_policy_unknown_tenant_emits_audit() -> None:
 
 def test_write_allowlist_returns_none_when_unset() -> None:
     sink = _CapturingSink()
-    emitter = MultiSinkAuditEmitter(sinks=[sink])
+    emitter = MultiSinkAuditEmitter(global_sinks=[sink])
     registry = SingleTenantRegistry(_cfg("tenant_a", write_allowlist=None))
     resolver = make_write_allowlist(registry, emitter)
     assert resolver(_session("tenant_a")) is None
@@ -120,7 +120,7 @@ def test_write_allowlist_returns_none_when_unset() -> None:
 
 def test_write_allowlist_returns_empty_list() -> None:
     sink = _CapturingSink()
-    emitter = MultiSinkAuditEmitter(sinks=[sink])
+    emitter = MultiSinkAuditEmitter(global_sinks=[sink])
     registry = SingleTenantRegistry(_cfg("tenant_a", write_allowlist=[]))
     resolver = make_write_allowlist(registry, emitter)
     assert resolver(_session("tenant_a")) == []
@@ -128,7 +128,7 @@ def test_write_allowlist_returns_empty_list() -> None:
 
 def test_write_allowlist_returns_explicit_list() -> None:
     sink = _CapturingSink()
-    emitter = MultiSinkAuditEmitter(sinks=[sink])
+    emitter = MultiSinkAuditEmitter(global_sinks=[sink])
     registry = SingleTenantRegistry(_cfg("tenant_a", write_allowlist=["write.isolate_agent"]))
     resolver = make_write_allowlist(registry, emitter)
     assert resolver(_session("tenant_a")) == ["write.isolate_agent"]
@@ -136,7 +136,7 @@ def test_write_allowlist_returns_explicit_list() -> None:
 
 def test_write_allowlist_unknown_tenant_returns_empty_list() -> None:
     sink = _CapturingSink()
-    emitter = MultiSinkAuditEmitter(sinks=[sink])
+    emitter = MultiSinkAuditEmitter(global_sinks=[sink])
     registry = SingleTenantRegistry(_cfg("tenant_a"))
     resolver = make_write_allowlist(registry, emitter)
     assert resolver(_session("tenant_phantom")) == []
@@ -144,7 +144,7 @@ def test_write_allowlist_unknown_tenant_returns_empty_list() -> None:
 
 def test_write_allowlist_unknown_tenant_emits_audit() -> None:
     sink = _CapturingSink()
-    emitter = MultiSinkAuditEmitter(sinks=[sink])
+    emitter = MultiSinkAuditEmitter(global_sinks=[sink])
     registry = SingleTenantRegistry(_cfg("tenant_a"))
     resolver = make_write_allowlist(registry, emitter)
     resolver(_session("tenant_phantom"))
@@ -158,7 +158,7 @@ def test_write_allowlist_unknown_tenant_emits_audit() -> None:
 
 def test_ar_allowlist_returns_tenants_list() -> None:
     sink = _CapturingSink()
-    emitter = MultiSinkAuditEmitter(sinks=[sink])
+    emitter = MultiSinkAuditEmitter(global_sinks=[sink])
     registry = SingleTenantRegistry(
         _cfg("tenant_a", active_response_allowlist=["isolate", "kill_process"])
     )
@@ -168,7 +168,7 @@ def test_ar_allowlist_returns_tenants_list() -> None:
 
 def test_ar_allowlist_returns_empty_for_default_config() -> None:
     sink = _CapturingSink()
-    emitter = MultiSinkAuditEmitter(sinks=[sink])
+    emitter = MultiSinkAuditEmitter(global_sinks=[sink])
     registry = SingleTenantRegistry(_cfg("tenant_a"))
     resolver = make_ar_allowlist(registry, emitter)
     assert resolver(_session("tenant_a")) == []
@@ -176,7 +176,7 @@ def test_ar_allowlist_returns_empty_for_default_config() -> None:
 
 def test_ar_allowlist_unknown_tenant_returns_empty_list() -> None:
     sink = _CapturingSink()
-    emitter = MultiSinkAuditEmitter(sinks=[sink])
+    emitter = MultiSinkAuditEmitter(global_sinks=[sink])
     registry = SingleTenantRegistry(_cfg("tenant_a"))
     resolver = make_ar_allowlist(registry, emitter)
     assert resolver(_session("tenant_phantom")) == []
@@ -184,7 +184,7 @@ def test_ar_allowlist_unknown_tenant_returns_empty_list() -> None:
 
 def test_ar_allowlist_unknown_tenant_emits_audit() -> None:
     sink = _CapturingSink()
-    emitter = MultiSinkAuditEmitter(sinks=[sink])
+    emitter = MultiSinkAuditEmitter(global_sinks=[sink])
     registry = SingleTenantRegistry(_cfg("tenant_a"))
     resolver = make_ar_allowlist(registry, emitter)
     resolver(_session("tenant_phantom"))

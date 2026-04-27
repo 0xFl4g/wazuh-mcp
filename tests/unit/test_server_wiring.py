@@ -65,7 +65,7 @@ async def test_registered_search_alerts_executes_against_mocked_indexer(
     )
     cfg = load_config(config_dir)
     audit_buf = io.StringIO()
-    emitter = AuditEmitter(sinks=[StderrSink(stream=audit_buf)])
+    emitter = AuditEmitter(global_sinks=[StderrSink(stream=audit_buf)])
     await emitter.start()
     app = build_app(cfg, audit=emitter)
     tool = next(t for t in app._tool_manager.list_tools() if t.name == "alerts.search_alerts")

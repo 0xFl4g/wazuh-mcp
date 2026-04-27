@@ -56,7 +56,7 @@ async def _drain(emitter: MultiSinkAuditEmitter) -> None:
 @pytest.mark.asyncio
 async def test_happy_path_calls_handler_and_audits() -> None:
     out = io.StringIO()
-    emitter = MultiSinkAuditEmitter(sinks=[StderrSink(stream=out)])
+    emitter = MultiSinkAuditEmitter(global_sinks=[StderrSink(stream=out)])
     await emitter.start()
     try:
         wrapped = instrumented_tool(
@@ -81,7 +81,7 @@ async def test_happy_path_calls_handler_and_audits() -> None:
 
 @pytest.mark.asyncio
 async def test_rbac_deny_returns_forbidden_without_handler_call() -> None:
-    emitter = MultiSinkAuditEmitter(sinks=[StderrSink(stream=io.StringIO())])
+    emitter = MultiSinkAuditEmitter(global_sinks=[StderrSink(stream=io.StringIO())])
     await emitter.start()
     try:
         handler = AsyncMock()
@@ -106,7 +106,7 @@ async def test_rbac_deny_returns_forbidden_without_handler_call() -> None:
 
 @pytest.mark.asyncio
 async def test_rate_limit_exhaustion_returns_rate_limited() -> None:
-    emitter = MultiSinkAuditEmitter(sinks=[StderrSink(stream=io.StringIO())])
+    emitter = MultiSinkAuditEmitter(global_sinks=[StderrSink(stream=io.StringIO())])
     await emitter.start()
     try:
         limiter = _limiter()
@@ -133,7 +133,7 @@ async def test_rate_limit_exhaustion_returns_rate_limited() -> None:
 @pytest.mark.asyncio
 async def test_handler_exception_audits_error_outcome() -> None:
     out = io.StringIO()
-    emitter = MultiSinkAuditEmitter(sinks=[StderrSink(stream=out)])
+    emitter = MultiSinkAuditEmitter(global_sinks=[StderrSink(stream=out)])
     await emitter.start()
     try:
 
@@ -163,7 +163,7 @@ async def test_handler_exception_audits_error_outcome() -> None:
 @pytest.mark.asyncio
 async def test_rbac_deny_does_not_consume_rate_limit_token() -> None:
     """Regression guard: a denied call must not consume a rate-limit token."""
-    emitter = MultiSinkAuditEmitter(sinks=[StderrSink(stream=io.StringIO())])
+    emitter = MultiSinkAuditEmitter(global_sinks=[StderrSink(stream=io.StringIO())])
     await emitter.start()
     try:
         limiter = InProcessRateLimiter(
@@ -208,7 +208,7 @@ async def test_handler_generic_exception_audits_internal_error() -> None:
     import asyncio
 
     out = io.StringIO()
-    emitter = MultiSinkAuditEmitter(sinks=[StderrSink(stream=out)])
+    emitter = MultiSinkAuditEmitter(global_sinks=[StderrSink(stream=out)])
     await emitter.start()
     try:
 
@@ -241,7 +241,7 @@ async def test_cancelled_handler_still_audits() -> None:
     import asyncio
 
     out = io.StringIO()
-    emitter = MultiSinkAuditEmitter(sinks=[StderrSink(stream=out)])
+    emitter = MultiSinkAuditEmitter(global_sinks=[StderrSink(stream=out)])
     await emitter.start()
     try:
         started = asyncio.Event()
@@ -287,7 +287,7 @@ async def test_pydantic_validation_error_audits_parse_error() -> None:
         n: int
 
     out = io.StringIO()
-    emitter = MultiSinkAuditEmitter(sinks=[StderrSink(stream=out)])
+    emitter = MultiSinkAuditEmitter(global_sinks=[StderrSink(stream=out)])
     await emitter.start()
     try:
 
@@ -322,7 +322,7 @@ async def test_functools_wraps_preserved() -> None:
         """Original docstring."""
         return {}
 
-    emitter = MultiSinkAuditEmitter(sinks=[StderrSink(stream=io.StringIO())])
+    emitter = MultiSinkAuditEmitter(global_sinks=[StderrSink(stream=io.StringIO())])
     await emitter.start()
     try:
         wrapped = instrumented_tool(
@@ -347,7 +347,7 @@ async def test_write_tool_emits_requested_then_completed_audit() -> None:
     import io
 
     out = io.StringIO()
-    emitter = MultiSinkAuditEmitter(sinks=[StderrSink(stream=out)])
+    emitter = MultiSinkAuditEmitter(global_sinks=[StderrSink(stream=out)])
     await emitter.start()
     try:
 
@@ -386,7 +386,7 @@ async def test_write_tool_requested_audit_then_error_on_upstream_failure() -> No
     import io
 
     out = io.StringIO()
-    emitter = MultiSinkAuditEmitter(sinks=[StderrSink(stream=out)])
+    emitter = MultiSinkAuditEmitter(global_sinks=[StderrSink(stream=out)])
     await emitter.start()
     try:
 
@@ -423,7 +423,7 @@ async def test_non_write_tool_emits_single_audit_as_before() -> None:
     import io
 
     out = io.StringIO()
-    emitter = MultiSinkAuditEmitter(sinks=[StderrSink(stream=out)])
+    emitter = MultiSinkAuditEmitter(global_sinks=[StderrSink(stream=out)])
     await emitter.start()
     try:
         wrapped = instrumented_tool(
@@ -482,7 +482,7 @@ def test_args_model_surfaces_typed_fields_to_fastmcp_introspection() -> None:
             handler=_handler,
             rbac_policy=_policy,
             limiter=_limiter(),
-            audit=MultiSinkAuditEmitter(sinks=[StderrSink(stream=io.StringIO())]),
+            audit=MultiSinkAuditEmitter(global_sinks=[StderrSink(stream=io.StringIO())]),
             args_model=args,
             result_model=result,
         )

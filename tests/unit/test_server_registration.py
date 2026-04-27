@@ -35,7 +35,7 @@ def _limiter() -> InProcessRateLimiter:
 
 def test_every_m3_tool_is_registered() -> None:
     mcp_app = FastMCP(name="test")
-    audit = AuditEmitter(sinks=[StderrSink(stream=io.StringIO())])
+    audit = AuditEmitter(global_sinks=[StderrSink(stream=io.StringIO())])
     _register_everything(
         mcp_app,
         indexer_pool=_StubPool(),
@@ -71,7 +71,7 @@ def test_every_m3_tool_is_registered() -> None:
 
 def test_every_m3_resource_template_is_registered() -> None:
     mcp_app = FastMCP(name="test")
-    audit = AuditEmitter(sinks=[StderrSink(stream=io.StringIO())])
+    audit = AuditEmitter(global_sinks=[StderrSink(stream=io.StringIO())])
     _register_everything(
         mcp_app,
         indexer_pool=_StubPool(),
@@ -93,7 +93,7 @@ def test_every_m3_resource_template_is_registered() -> None:
 
 def test_every_m3_prompt_is_registered() -> None:
     mcp_app = FastMCP(name="test")
-    audit = AuditEmitter(sinks=[StderrSink(stream=io.StringIO())])
+    audit = AuditEmitter(global_sinks=[StderrSink(stream=io.StringIO())])
     _register_everything(
         mcp_app,
         indexer_pool=_StubPool(),
@@ -111,7 +111,7 @@ def test_every_m3_prompt_is_registered() -> None:
 
 def test_all_tools_carry_toolset_meta() -> None:
     mcp_app = FastMCP(name="test")
-    audit = AuditEmitter(sinks=[StderrSink(stream=io.StringIO())])
+    audit = AuditEmitter(global_sinks=[StderrSink(stream=io.StringIO())])
     _register_everything(
         mcp_app,
         indexer_pool=_StubPool(),

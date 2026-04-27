@@ -93,7 +93,7 @@ def _two_tenant_registry() -> _DictRegistry:
 
 def test_rbac_policy_resolves_per_tenant_per_call() -> None:
     sink = _CapturingSink()
-    emitter = MultiSinkAuditEmitter(sinks=[sink])
+    emitter = MultiSinkAuditEmitter(global_sinks=[sink])
     policy = make_rbac_policy(_two_tenant_registry(), emitter)
 
     result_a = policy(_session("tenant_a"))
@@ -109,7 +109,7 @@ def test_rbac_policy_resolves_per_tenant_per_call() -> None:
 
 def test_write_allowlist_resolves_per_tenant_per_call() -> None:
     sink = _CapturingSink()
-    emitter = MultiSinkAuditEmitter(sinks=[sink])
+    emitter = MultiSinkAuditEmitter(global_sinks=[sink])
     resolver = make_write_allowlist(_two_tenant_registry(), emitter)
 
     assert resolver(_session("tenant_a")) == ["write.isolate_agent"]
@@ -118,7 +118,7 @@ def test_write_allowlist_resolves_per_tenant_per_call() -> None:
 
 def test_ar_allowlist_resolves_per_tenant_per_call() -> None:
     sink = _CapturingSink()
-    emitter = MultiSinkAuditEmitter(sinks=[sink])
+    emitter = MultiSinkAuditEmitter(global_sinks=[sink])
     resolver = make_ar_allowlist(_two_tenant_registry(), emitter)
 
     assert resolver(_session("tenant_a")) == ["isolate"]
@@ -128,7 +128,7 @@ def test_ar_allowlist_resolves_per_tenant_per_call() -> None:
 def test_resolution_does_not_capture_first_session_tenant() -> None:
     """Closure must not memoize the first call's tenant config."""
     sink = _CapturingSink()
-    emitter = MultiSinkAuditEmitter(sinks=[sink])
+    emitter = MultiSinkAuditEmitter(global_sinks=[sink])
     policy = make_rbac_policy(_two_tenant_registry(), emitter)
 
     # Call with tenant_a, then tenant_b, then tenant_a again — each call
@@ -144,7 +144,7 @@ def test_resolution_does_not_capture_first_session_tenant() -> None:
 
 def test_unknown_tenant_amid_known_tenants_emits_one_audit_per_resolver() -> None:
     sink = _CapturingSink()
-    emitter = MultiSinkAuditEmitter(sinks=[sink])
+    emitter = MultiSinkAuditEmitter(global_sinks=[sink])
     registry = _two_tenant_registry()
     rbac = make_rbac_policy(registry, emitter)
     write = make_write_allowlist(registry, emitter)

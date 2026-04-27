@@ -32,7 +32,7 @@ def _session() -> Session:
 
 def test_emit_writes_error_reason_when_provided() -> None:
     sink = _CapturingSink()
-    emitter = MultiSinkAuditEmitter(sinks=[sink])
+    emitter = MultiSinkAuditEmitter(global_sinks=[sink])
     emitter.emit(
         session=_session(),
         tool="<rbac.resolve>",
@@ -51,7 +51,7 @@ def test_emit_writes_error_reason_when_provided() -> None:
 
 def test_emit_omits_error_reason_when_not_provided() -> None:
     sink = _CapturingSink()
-    emitter = MultiSinkAuditEmitter(sinks=[sink])
+    emitter = MultiSinkAuditEmitter(global_sinks=[sink])
     emitter.emit(
         session=_session(),
         tool="alerts.search_alerts",
@@ -67,7 +67,7 @@ def test_emit_omits_error_reason_when_not_provided() -> None:
 def test_emit_writes_error_reason_with_error_code() -> None:
     """error_reason without error_code is unusual but allowed; both fields are independent."""
     sink = _CapturingSink()
-    emitter = MultiSinkAuditEmitter(sinks=[sink])
+    emitter = MultiSinkAuditEmitter(global_sinks=[sink])
     emitter.emit(
         session=_session(),
         tool="alerts.search_alerts",

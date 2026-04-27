@@ -57,7 +57,7 @@ async def test_write_allowlist_denies_per_call() -> None:
     from wazuh_mcp.wazuh.errors import WazuhError
 
     mcp_app = FastMCP(name="test")
-    audit = MultiSinkAuditEmitter(sinks=None)
+    audit = MultiSinkAuditEmitter(global_sinks=None)
     limiter = InProcessRateLimiter(default=RateLimitConfig())
 
     # tenant_a's write_allowlist permits only isolate_agent.
@@ -134,7 +134,7 @@ async def test_restart_manager_and_cluster_status_registered() -> None:
     from wazuh_mcp.transport.session_ctx import set_current_session
 
     mcp_app = FastMCP(name="test")
-    audit = MultiSinkAuditEmitter(sinks=None)
+    audit = MultiSinkAuditEmitter(global_sinks=None)
     limiter = InProcessRateLimiter(default=RateLimitConfig())
 
     def _allow_all(session: Session) -> dict[str, list[str]]:

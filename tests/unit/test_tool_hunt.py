@@ -30,7 +30,7 @@ def session() -> Session:
 
 @pytest.fixture
 def audit() -> AuditEmitter:
-    return AuditEmitter(sinks=[StderrSink(stream=io.StringIO())])
+    return AuditEmitter(global_sinks=[StderrSink(stream=io.StringIO())])
 
 
 @pytest.fixture

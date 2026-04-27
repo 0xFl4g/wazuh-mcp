@@ -17,7 +17,7 @@ async def test_emit_fans_out_to_all_sinks() -> None:
     out1, out2 = io.StringIO(), io.StringIO()
     sink1 = StderrSink(stream=out1)
     sink2 = StderrSink(stream=out2)
-    em = MultiSinkAuditEmitter(sinks=[sink1, sink2])
+    em = MultiSinkAuditEmitter(global_sinks=[sink1, sink2])
     await em.start()
     s = Session(user_id="u", tenant_id="t", rbac_role="analyst", auth_method="config")
     em.emit(
@@ -35,17 +35,17 @@ async def test_emit_fans_out_to_all_sinks() -> None:
 
 
 @pytest.mark.asyncio
-async def test_empty_sinks_defaults_to_stderr_sink() -> None:
-    em = MultiSinkAuditEmitter(sinks=[])
-    # default should be a single StderrSink
-    assert len(em.sinks) == 1
-    assert em.sinks[0].__class__.__name__ == "StderrSink"
+async def test_empty_sinks_is_explicit_no_op() -> None:
+    # Post-M4d: an explicit empty list means "no sinks"; only `None`
+    # falls back to the StderrSink safety net (see test_none_sinks_also_defaults).
+    em = MultiSinkAuditEmitter(global_sinks=[])
+    assert em.sinks == []
 
 
 @pytest.mark.asyncio
 async def test_emit_args_hashed_not_logged() -> None:
     out = io.StringIO()
-    em = MultiSinkAuditEmitter(sinks=[StderrSink(stream=out)])
+    em = MultiSinkAuditEmitter(global_sinks=[StderrSink(stream=out)])
     await em.start()
     s = Session(user_id="u", tenant_id="t", rbac_role="analyst", auth_method="config")
     em.emit(
@@ -64,7 +64,7 @@ async def test_emit_args_hashed_not_logged() -> None:
 
 @pytest.mark.asyncio
 async def test_none_sinks_also_defaults() -> None:
-    em = MultiSinkAuditEmitter(sinks=None)
+    em = MultiSinkAuditEmitter(global_sinks=None)
     assert len(em.sinks) == 1
     assert em.sinks[0].__class__.__name__ == "StderrSink"
 
@@ -103,7 +103,7 @@ async def test_start_rolls_back_on_partial_failure() -> None:
 
     good = _GoodSink()
     bad = _FailingSink()
-    em = MultiSinkAuditEmitter(sinks=[good, bad])
+    em = MultiSinkAuditEmitter(global_sinks=[good, bad])
     with pytest.raises(RuntimeError, match="sink start failed"):
         await em.start()
     # The good sink MUST have been rolled back (stopped) during start() failure.
@@ -144,7 +144,7 @@ async def test_stop_continues_past_sink_failure() -> None:
 
     fail = _FailingOnStop()
     good = _GoodSink()
-    em = MultiSinkAuditEmitter(sinks=[fail, good])
+    em = MultiSinkAuditEmitter(global_sinks=[fail, good])
     await em.start()
     with pytest.raises(BaseExceptionGroup):
         await em.stop()
@@ -157,7 +157,7 @@ async def test_emit_synchronous_non_blocking() -> None:
     """emit() must never block — it enqueues on each sink and returns."""
     import time
 
-    em = MultiSinkAuditEmitter(sinks=[StderrSink(stream=io.StringIO())])
+    em = MultiSinkAuditEmitter(global_sinks=[StderrSink(stream=io.StringIO())])
     await em.start()
     s = Session(user_id="u", tenant_id="t", rbac_role="analyst", auth_method="config")
     t0 = time.perf_counter()

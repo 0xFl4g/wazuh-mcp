@@ -24,7 +24,7 @@ async def _drain(emitter: MultiSinkAuditEmitter) -> None:
 @pytest.mark.asyncio
 async def test_emits_one_json_line_per_call() -> None:
     buf = io.StringIO()
-    emitter = MultiSinkAuditEmitter(sinks=[StderrSink(stream=buf)])
+    emitter = MultiSinkAuditEmitter(global_sinks=[StderrSink(stream=buf)])
     await emitter.start()
     emitter.emit(
         session=_session(),
@@ -51,7 +51,7 @@ async def test_emits_one_json_line_per_call() -> None:
 @pytest.mark.asyncio
 async def test_args_are_hashed_not_raw() -> None:
     buf = io.StringIO()
-    emitter = MultiSinkAuditEmitter(sinks=[StderrSink(stream=buf)])
+    emitter = MultiSinkAuditEmitter(global_sinks=[StderrSink(stream=buf)])
     await emitter.start()
     emitter.emit(
         session=_session(),
@@ -75,7 +75,7 @@ async def test_hash_is_deterministic_across_key_order() -> None:
         (buf1, {"time_range": "1h", "min_level": 12}),
         (buf2, {"min_level": 12, "time_range": "1h"}),
     ):
-        emitter = MultiSinkAuditEmitter(sinks=[StderrSink(stream=buf)])
+        emitter = MultiSinkAuditEmitter(global_sinks=[StderrSink(stream=buf)])
         await emitter.start()
         emitter.emit(
             session=_session(),
@@ -94,7 +94,7 @@ async def test_hash_is_deterministic_across_key_order() -> None:
 @pytest.mark.asyncio
 async def test_error_outcome_captures_code() -> None:
     buf = io.StringIO()
-    emitter = MultiSinkAuditEmitter(sinks=[StderrSink(stream=buf)])
+    emitter = MultiSinkAuditEmitter(global_sinks=[StderrSink(stream=buf)])
     await emitter.start()
     emitter.emit(
         session=_session(),
