@@ -67,9 +67,6 @@ tenants:
       session:
         capacity: 10
         refill_per_sec: 1.0
-    audit_sinks:
-      - kind: wazuh_indexer
-        index_prefix: local-audit
   - tenant_id: tenant_b
     indexer_url: https://localhost:9200
     verify_tls: false
@@ -84,9 +81,6 @@ tenants:
       session:
         capacity: 100
         refill_per_sec: 1.0
-    audit_sinks:
-      - kind: wazuh_indexer
-        index_prefix: tenant-b-audit
 """.strip()
     )
     (cfg_dir / "secrets.yaml").write_text(
