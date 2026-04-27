@@ -164,6 +164,8 @@ jobs:
 
 **Cost projection:** ~45 evals × 2 models × ~1500 input + 200 output tokens (selection-only) to ~5000 input + 1500 output (multi-step). Approximate monthly cost: $100-150.
 
+**Pre-execution requirement:** `ANTHROPIC_API_KEY` repository secret must be set in GitHub Settings → Secrets and variables → Actions before the eval workflow runs. T6's docs note this; if the secret is unset the workflow exits early with a clear message instead of swallowing the error.
+
 ### 1.6 Forward extensibility
 
 - Adding a prompt = appending one YAML entry. No runner changes.
@@ -444,7 +446,7 @@ M5a ships when:
 2. `tests/integration/test_m4d_multi_tenant.py` has 5 passing tests (no skip-stubs); the cross-tenant negatives all pass.
 3. `security.yml` workflow runs on PR with green dependency audit + secret scan.
 4. `destructive-integration.yml` workflow runs on weekly schedule + manual dispatch; `test_restart_manager_node_scope_completes` is un-skipped and passes there.
-5. `integration.yml` (the main nightly) filters out destructive tests cleanly: 32+ passed, 2 skipped (M4d skip-stubs filled in by §2.3 above).
+5. `integration.yml` (the main nightly) filters out destructive tests cleanly. Expected count: 34+ passed, 0 skipped (v0.7.5 baseline 30 passed + 3 skipped → minus 1 destructive relocation + 2 M4d skip-stubs filled in + 3 new cross-tenant tests = 34 passed, 0 skipped).
 6. Unit suite stays green at 506+ passed.
 7. `pyproject.toml` at `0.8.0`. Tag `v0.8.0-m5a` on the ship commit.
 
