@@ -82,12 +82,12 @@ def test_module_exports_all_seven_handlers_and_args() -> None:
 def test_confirm_must_be_literal_true_on_isolate() -> None:
     # confirm=False is a type-check failure at Args parse (Literal[True]).
     with pytest.raises(ValidationError):
-        IsolateAgentArgs(agent_id="003", confirm=False)
+        IsolateAgentArgs(agent_ids=["003"], confirm=False)
 
 
 def test_confirm_missing_on_isolate() -> None:
     with pytest.raises(ValidationError):
-        IsolateAgentArgs(agent_id="003")  # ty: ignore[missing-argument]
+        IsolateAgentArgs(agent_ids=["003"])  # ty: ignore[missing-argument]
 
 
 # --- run_as passthrough ---
@@ -95,15 +95,15 @@ def test_confirm_missing_on_isolate() -> None:
 
 @pytest.mark.asyncio
 async def test_isolate_agent_passes_run_as(server_api) -> None:
-    args = IsolateAgentArgs(agent_id="003", confirm=True)
+    args = IsolateAgentArgs(agent_ids=["003"], confirm=True)
     await isolate_agent(args=args, session=_session(), server_api=server_api)
-    server_api.isolate_agent.assert_awaited_once_with(agent_id="003", run_as="alice")
+    server_api.isolate_agent.assert_awaited_once_with(agent_ids=["003"], run_as="alice")
 
 
 @pytest.mark.asyncio
 async def test_run_active_response_rejects_when_allowlist_empty(server_api) -> None:
     args = RunActiveResponseArgs(
-        agent_id="003", command_name="block-ip", custom_args=None, confirm=True
+        agent_ids=["003"], command_name="block-ip", custom_args=None, confirm=True
     )
     session = _session()
     with pytest.raises(WazuhError) as exc:
@@ -117,7 +117,7 @@ async def test_run_active_response_rejects_when_allowlist_empty(server_api) -> N
 @pytest.mark.asyncio
 async def test_run_active_response_rejects_command_not_in_allowlist(server_api) -> None:
     args = RunActiveResponseArgs(
-        agent_id="003", command_name="dangerous", custom_args=None, confirm=True
+        agent_ids=["003"], command_name="dangerous", custom_args=None, confirm=True
     )
     with pytest.raises(WazuhError) as exc:
         await run_active_response(
@@ -132,7 +132,10 @@ async def test_run_active_response_rejects_command_not_in_allowlist(server_api) 
 @pytest.mark.asyncio
 async def test_run_active_response_allows_command_in_allowlist(server_api) -> None:
     args = RunActiveResponseArgs(
-        agent_id="003", command_name="block-ip", custom_args={"srcip": "10.0.0.1"}, confirm=True
+        agent_ids=["003"],
+        command_name="block-ip",
+        custom_args={"srcip": "10.0.0.1"},
+        confirm=True,
     )
     result = await run_active_response(
         args=args,
@@ -142,7 +145,7 @@ async def test_run_active_response_allows_command_in_allowlist(server_api) -> No
     )
     assert result.ok is True
     server_api.run_active_response.assert_awaited_once_with(
-        agent_id="003",
+        agent_ids=["003"],
         command="block-ip",
         custom_args={"srcip": "10.0.0.1"},
         run_as="alice",

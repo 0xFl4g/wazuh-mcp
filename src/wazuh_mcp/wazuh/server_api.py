@@ -164,14 +164,16 @@ class ServerApiClient:
 
     # ---- M4b writes ----
 
-    async def isolate_agent(self, *, agent_id: str, run_as: str | None = None) -> dict[str, Any]:
+    async def isolate_agent(
+        self, *, agent_ids: list[str], run_as: str | None = None
+    ) -> dict[str, Any]:
         """Wazuh 4.9 active-response endpoint is ``PUT /active-response`` with
         the target agents in the ``agents_list`` query param and the command
-        in the JSON body. (POST returns 405; older docs show POST shape.)"""
+        in the JSON body. Multi-agent: comma-joined list."""
         return await self.put(
             "/active-response",
             json={"command": "isolate"},
-            params={"agents_list": agent_id},
+            params={"agents_list": ",".join(agent_ids)},
             run_as=run_as,
         )
 
@@ -211,7 +213,7 @@ class ServerApiClient:
     async def run_active_response(
         self,
         *,
-        agent_id: str,
+        agent_ids: list[str],
         command: str,
         custom_args: dict[str, Any] | None = None,
         run_as: str | None = None,
@@ -223,7 +225,7 @@ class ServerApiClient:
         return await self.put(
             "/active-response",
             json=body,
-            params={"agents_list": agent_id},
+            params={"agents_list": ",".join(agent_ids)},
             run_as=run_as,
         )
 

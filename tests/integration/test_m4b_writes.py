@@ -257,7 +257,9 @@ async def raw_indexer_client() -> AsyncIterator[_RawIndexerClient]:
 async def test_isolate_then_restart_agent_roundtrip(mcp_http_server_writes, keycloak_token) -> None:
     """Happy path: isolate, check audit events landed, restart, verify both ok."""
     async with _mcp_session(MCP_WRITES_URL, keycloak_token()) as session:
-        iso = await session.call_tool("write.isolate_agent", {"agent_id": "001", "confirm": True})
+        iso = await session.call_tool(
+            "write.isolate_agent", {"agent_ids": ["001"], "confirm": True}
+        )
         assert not iso.isError
 
         restart = await session.call_tool(
@@ -303,7 +305,7 @@ async def test_run_active_response_rejected_when_command_not_allowlisted(
         result = await session.call_tool(
             "write.run_active_response",
             {
-                "agent_id": "001",
+                "agent_ids": ["001"],
                 "command_name": "not-in-allowlist",
                 "custom_args": None,
                 "confirm": True,
@@ -318,7 +320,7 @@ async def test_confirm_missing_rejected_at_args_parse(
     mcp_http_server_writes, keycloak_token
 ) -> None:
     async with _mcp_session(MCP_WRITES_URL, keycloak_token()) as session:
-        result = await session.call_tool("write.isolate_agent", {"agent_id": "001"})
+        result = await session.call_tool("write.isolate_agent", {"agent_ids": ["001"]})
     assert result.isError
 
 

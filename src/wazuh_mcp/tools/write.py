@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from datetime import UTC, datetime
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any, Final, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -28,11 +28,22 @@ from wazuh_mcp.wazuh.rule_render import RuleDefinition, render_rule_xml
 # ---------- Shared result shape ----------
 
 
+_AR_AGENTS_MAX: Final = 50
+
+
+class FailedAgent(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    agent_id: str
+    reason: str
+
+
 class WriteResult(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     ok: bool
     affected_agents: list[str] | None = None
+    failed_agents: list[FailedAgent] = Field(default_factory=list)
     affected_files: list[str] | None = None
     timestamp: datetime
 
@@ -45,13 +56,29 @@ def _extract_affected_ids(resp: dict[str, Any]) -> list[str]:
     return [str(i) for i in items]
 
 
+def _extract_failed_items(resp: dict[str, Any]) -> list[FailedAgent]:
+    """Wazuh's data.failed_items shape: [{'id': '002', 'error': {'message': '...'}}]."""
+    data = resp.get("data", {})
+    items = data.get("failed_items") or []
+    out: list[FailedAgent] = []
+    for item in items:
+        agent_id = str(item.get("id", ""))
+        err = item.get("error") or {}
+        reason = str(err.get("message", "unknown"))
+        out.append(FailedAgent(agent_id=agent_id, reason=reason))
+    return out
+
+
 # ---------- 1. isolate_agent ----------
 
 
 class IsolateAgentArgs(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    agent_id: Annotated[str, Field(min_length=1, max_length=16)]
+    agent_ids: Annotated[
+        list[str],
+        Field(min_length=1, max_length=_AR_AGENTS_MAX),
+    ]
     confirm: Annotated[
         Literal[True],
         Field(
@@ -70,10 +97,13 @@ async def isolate_agent(
     session: Session,
     server_api: Any,
 ) -> WriteResult:
-    resp = await server_api.isolate_agent(agent_id=args.agent_id, run_as=session.wazuh_user)
+    resp = await server_api.isolate_agent(agent_ids=args.agent_ids, run_as=session.wazuh_user)
+    affected = _extract_affected_ids(resp)
+    failed = _extract_failed_items(resp)
     return WriteResult(
-        ok=True,
-        affected_agents=_extract_affected_ids(resp),
+        ok=len(failed) == 0,
+        affected_agents=affected,
+        failed_agents=failed,
         timestamp=datetime.now(UTC),
     )
 
@@ -231,7 +261,10 @@ async def update_rule(
 class RunActiveResponseArgs(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    agent_id: Annotated[str, Field(min_length=1, max_length=16)]
+    agent_ids: Annotated[
+        list[str],
+        Field(min_length=1, max_length=_AR_AGENTS_MAX),
+    ]
     command_name: Annotated[str, Field(min_length=1, max_length=128)]
     custom_args: dict[str, Any] | None = None
     confirm: Literal[True]
@@ -251,13 +284,16 @@ async def run_active_response(
             403,
         )
     resp = await server_api.run_active_response(
-        agent_id=args.agent_id,
+        agent_ids=args.agent_ids,
         command=args.command_name,
         custom_args=args.custom_args,
         run_as=session.wazuh_user,
     )
+    affected = _extract_affected_ids(resp)
+    failed = _extract_failed_items(resp)
     return WriteResult(
-        ok=True,
-        affected_agents=_extract_affected_ids(resp),
+        ok=len(failed) == 0,
+        affected_agents=affected,
+        failed_agents=failed,
         timestamp=datetime.now(UTC),
     )

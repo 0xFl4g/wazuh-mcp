@@ -55,7 +55,7 @@ async def test_isolate_agent_puts_active_response(client, httpx_mock) -> None:
         method="PUT",
         json={"data": {"affected_items": ["003"]}},
     )
-    resp = await client.isolate_agent(agent_id="003", run_as="alice")
+    resp = await client.isolate_agent(agent_ids=["003"], run_as="alice")
     assert "data" in resp
     active_response_requests = [
         r for r in httpx_mock.get_requests() if r.url.path == "/active-response"
@@ -152,7 +152,7 @@ async def test_run_active_response_puts_with_command_and_args(client, httpx_mock
         json={"data": {"affected_items": ["003"]}},
     )
     resp = await client.run_active_response(
-        agent_id="003",
+        agent_ids=["003"],
         command="block-ip",
         custom_args={"srcip": "10.0.0.1"},
         run_as="alice",

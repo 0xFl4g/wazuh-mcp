@@ -474,7 +474,7 @@ def test_args_model_surfaces_typed_fields_to_fastmcp_introspection() -> None:
             SearchAlertsResult,
             {"time_range", "min_level", "agent_id", "size", "cursor"},
         ),
-        ("write.isolate_agent", IsolateAgentArgs, WriteResult, {"agent_id", "confirm"}),
+        ("write.isolate_agent", IsolateAgentArgs, WriteResult, {"agent_ids", "confirm"}),
         ("write.create_rule", CreateRuleArgs, WriteResult, {"rule", "confirm"}),
     ]:
         wrapped = instrumented_tool(
