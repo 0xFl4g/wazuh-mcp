@@ -18,6 +18,10 @@ class TenantRegistry(Protocol):
         """Return the config for tenant_id. Raises KeyError if unknown."""
         ...
 
+    def all_tenants(self) -> list[TenantConfig]:
+        """Return all configured tenants. Order is impl-defined but stable per call."""
+        ...
+
 
 class YamlTenantRegistry:
     def __init__(self, path: Path) -> None:
@@ -39,6 +43,9 @@ class YamlTenantRegistry:
             raise KeyError(f"unknown tenant: {tenant_id}")
         return self._tenants[tenant_id]
 
+    def all_tenants(self) -> list[TenantConfig]:
+        return list(self._tenants.values())
+
 
 class SingleTenantRegistry:
     """Single-config TenantRegistry adapter for stdio-mode wiring.
@@ -55,3 +62,6 @@ class SingleTenantRegistry:
         if tenant_id != self._tenant.tenant_id:
             raise KeyError(f"unknown tenant: {tenant_id}")
         return self._tenant
+
+    def all_tenants(self) -> list[TenantConfig]:
+        return [self._tenant]

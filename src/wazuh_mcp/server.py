@@ -448,10 +448,13 @@ def build_http_app(http_cfg: HttpAppConfig, audit: MultiSinkAuditEmitter | None 
         # No tenant configured at all — every call will fail with
         # tenant_not_registered. Build a registry that always raises.
         class _EmptyRegistry:
-            def get(self, tenant_id: str):  # type: ignore[no-untyped-def]
+            def get(self, tenant_id: str) -> TenantConfig:
                 raise KeyError(f"unknown tenant: {tenant_id}")
 
-        _registry = _EmptyRegistry()  # type: ignore[assignment]
+            def all_tenants(self) -> list[TenantConfig]:
+                return []
+
+        _registry = _EmptyRegistry()
 
     rbac_policy = make_rbac_policy(_registry, audit_emitter)
     write_allowlist_policy = make_write_allowlist(_registry, audit_emitter)
