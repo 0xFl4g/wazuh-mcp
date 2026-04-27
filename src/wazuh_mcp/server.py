@@ -221,7 +221,10 @@ def build_app(cfg: AppConfig, audit: MultiSinkAuditEmitter | None = None) -> Fas
         or cfg.audit
         or MultiSinkAuditEmitter(sinks=_build_sinks(cfg.tenant, indexer_pool=None))
     )
-    limiter = cfg.limiter or InProcessRateLimiter(default=cfg.tenant.rate_limit)
+    limiter = cfg.limiter or InProcessRateLimiter(
+        default=cfg.tenant.rate_limit,
+        per_tenant={cfg.tenant.tenant_id: cfg.tenant.rate_limit},
+    )
 
     app = FastMCP(name="wazuh-mcp")
 
@@ -419,15 +422,15 @@ def build_http_app(http_cfg: HttpAppConfig, audit: MultiSinkAuditEmitter | None 
 
     if http_cfg.limiter is not None:
         limiter = http_cfg.limiter
-    elif http_cfg.tenant is not None:
-        limiter = InProcessRateLimiter(default=http_cfg.tenant.rate_limit)
     else:
-        # Extremely defensive: the M4a tenancy registry always yields at
-        # least one tenant. Fall back to permissive defaults so the server
-        # still boots.
         from wazuh_mcp.tenancy.m4_config import RateLimitConfig
 
-        limiter = InProcessRateLimiter(default=RateLimitConfig())
+        all_tenants = list(http_cfg.registry.all_tenants()) if http_cfg.registry else []
+        default_cfg = (
+            http_cfg.tenant.rate_limit if http_cfg.tenant is not None else RateLimitConfig()
+        )
+        per_tenant_cfg = {t.tenant_id: t.rate_limit for t in all_tenants}
+        limiter = InProcessRateLimiter(default=default_cfg, per_tenant=per_tenant_cfg)
 
     mcp_app = FastMCP(name="wazuh-mcp")
 
