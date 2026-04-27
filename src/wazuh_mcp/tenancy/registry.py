@@ -38,3 +38,20 @@ class YamlTenantRegistry:
         if tenant_id not in self._tenants:
             raise KeyError(f"unknown tenant: {tenant_id}")
         return self._tenants[tenant_id]
+
+
+class SingleTenantRegistry:
+    """Single-config TenantRegistry adapter for stdio-mode wiring.
+
+    Stdio is single-tenant by construction; this wraps the one ``TenantConfig``
+    so the same resolver factories used by HTTP work in stdio without a
+    separate code path.
+    """
+
+    def __init__(self, tenant: TenantConfig) -> None:
+        self._tenant = tenant
+
+    def get(self, tenant_id: str) -> TenantConfig:
+        if tenant_id != self._tenant.tenant_id:
+            raise KeyError(f"unknown tenant: {tenant_id}")
+        return self._tenant
