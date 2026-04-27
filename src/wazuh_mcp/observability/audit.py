@@ -96,6 +96,7 @@ class MultiSinkAuditEmitter:
         result_count: int,
         duration_ms: int,
         error_code: str | None = None,
+        error_reason: str | None = None,
     ) -> None:
         event: dict[str, Any] = {
             "timestamp": datetime.now(UTC).isoformat(),
@@ -110,6 +111,8 @@ class MultiSinkAuditEmitter:
         }
         if error_code is not None:
             event["error_code"] = error_code
+        if error_reason is not None:
+            event["error_reason"] = error_reason
         for sink in self.sinks:
             sink.submit(event)
 
