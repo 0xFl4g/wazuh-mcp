@@ -299,7 +299,60 @@ async def run_active_response(
     )
 
 
-# ---------- 8. restart_manager ----------
+# ---------- 8. run_active_response_on_group (M5b T-A2) ----------
+
+
+class RunActiveResponseOnGroupArgs(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    group_name: Annotated[
+        str,
+        Field(
+            min_length=1,
+            max_length=128,
+            description=(
+                "Wazuh agent group name. Must be enumerated in the tenant's "
+                "agent_group_allowlist; rejected with 'forbidden' otherwise."
+            ),
+        ),
+    ]
+    command_name: Annotated[str, Field(min_length=1, max_length=128)]
+    custom_args: dict[str, Any] | None = None
+    confirm: Literal[True]
+
+
+async def run_active_response_on_group(
+    *,
+    args: RunActiveResponseOnGroupArgs,
+    session: Session,
+    server_api: Any,
+    ar_group_allowlist: Sequence[str],
+) -> WriteResult:
+    """T-A2 handler. Two gates: write_allowlist (registration-time, in
+    server.py) + agent_group_allowlist (per-call, here)."""
+    if args.group_name not in ar_group_allowlist:
+        raise WazuhError(
+            "forbidden",
+            f"agent group {args.group_name!r} not in tenant agent_group_allowlist",
+            403,
+        )
+    resp = await server_api.run_active_response_on_group(
+        group_name=args.group_name,
+        command=args.command_name,
+        custom_args=args.custom_args,
+        run_as=session.wazuh_user,
+    )
+    affected = _extract_affected_ids(resp)
+    failed = _extract_failed_items(resp)
+    return WriteResult(
+        ok=len(failed) == 0,
+        affected_agents=affected,
+        failed_agents=failed,
+        timestamp=datetime.now(UTC),
+    )
+
+
+# ---------- 9. restart_manager ----------
 
 
 class RestartManagerArgs(BaseModel):

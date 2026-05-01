@@ -229,6 +229,31 @@ class ServerApiClient:
             run_as=run_as,
         )
 
+    async def run_active_response_on_group(
+        self,
+        *,
+        group_name: str,
+        command: str,
+        custom_args: dict[str, Any] | None = None,
+        run_as: str | None = None,
+    ) -> dict[str, Any]:
+        """M5b T-A2. Group-target AR.
+
+        Wazuh 4.9 active-response endpoint accepts agents_list=group:<name>
+        as documented Wazuh syntax to fan out a command to every agent in
+        the named group. Wire shape is identical to single-target AR
+        otherwise: PUT /active-response with command in the JSON body.
+        """
+        body: dict[str, Any] = {"command": command}
+        if custom_args:
+            body.update(custom_args)
+        return await self.put(
+            "/active-response",
+            json=body,
+            params={"agents_list": f"group:{group_name}"},
+            run_as=run_as,
+        )
+
     async def restart_cluster(
         self,
         *,

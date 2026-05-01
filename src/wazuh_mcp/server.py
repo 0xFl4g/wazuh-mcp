@@ -303,6 +303,7 @@ def build_app(cfg: AppConfig, audit: MultiSinkAuditEmitter | None = None) -> Fas
 
     from wazuh_mcp.rbac.resolver import (
         make_ar_allowlist,
+        make_ar_group_allowlist,
         make_rbac_policy,
         make_write_allowlist,
     )
@@ -312,6 +313,7 @@ def build_app(cfg: AppConfig, audit: MultiSinkAuditEmitter | None = None) -> Fas
     rbac_policy = make_rbac_policy(_registry, audit_emitter)
     write_allowlist_policy = make_write_allowlist(_registry, audit_emitter)
     ar_allowlist_policy = make_ar_allowlist(_registry, audit_emitter)
+    ar_group_allowlist_policy = make_ar_group_allowlist(_registry, audit_emitter)
 
     _register_everything(
         app,
@@ -322,6 +324,7 @@ def build_app(cfg: AppConfig, audit: MultiSinkAuditEmitter | None = None) -> Fas
         rbac_policy=rbac_policy,
         write_allowlist_policy=write_allowlist_policy,
         ar_allowlist_policy=ar_allowlist_policy,
+        ar_group_allowlist_policy=ar_group_allowlist_policy,
     )
     _install_rbac_hooks(app, rbac_policy=rbac_policy, audit_emitter=audit_emitter)
 
@@ -462,6 +465,7 @@ def build_http_app(http_cfg: HttpAppConfig, audit: MultiSinkAuditEmitter | None 
 
     from wazuh_mcp.rbac.resolver import (
         make_ar_allowlist,
+        make_ar_group_allowlist,
         make_rbac_policy,
         make_write_allowlist,
     )
@@ -488,6 +492,7 @@ def build_http_app(http_cfg: HttpAppConfig, audit: MultiSinkAuditEmitter | None 
     rbac_policy = make_rbac_policy(_registry, audit_emitter)
     write_allowlist_policy = make_write_allowlist(_registry, audit_emitter)
     ar_allowlist_policy = make_ar_allowlist(_registry, audit_emitter)
+    ar_group_allowlist_policy = make_ar_group_allowlist(_registry, audit_emitter)
 
     _register_everything(
         mcp_app,
@@ -498,6 +503,7 @@ def build_http_app(http_cfg: HttpAppConfig, audit: MultiSinkAuditEmitter | None 
         rbac_policy=rbac_policy,
         write_allowlist_policy=write_allowlist_policy,
         ar_allowlist_policy=ar_allowlist_policy,
+        ar_group_allowlist_policy=ar_group_allowlist_policy,
     )
     _install_rbac_hooks(mcp_app, rbac_policy=rbac_policy, audit_emitter=audit_emitter)
 
@@ -544,6 +550,7 @@ def _register_everything(
     rbac_policy: Callable[[Session], dict[str, list[str]]],
     write_allowlist_policy: Callable[[Session], list[str] | None] | None = None,
     ar_allowlist_policy: Callable[[Session], list[str]] | None = None,
+    ar_group_allowlist_policy: Callable[[Session], list[str]] | None = None,
 ) -> None:
     """Register every M3 tool, resource, and prompt onto ``mcp_app``.
 
@@ -1083,6 +1090,7 @@ def _register_everything(
         RestartManagerArgs,
         RestartManagerResult,
         RunActiveResponseArgs,
+        RunActiveResponseOnGroupArgs,
         UpdateRuleArgs,
         WriteResult,
     )
@@ -1106,6 +1114,9 @@ def _register_everything(
     )
     from wazuh_mcp.tools.write import (
         run_active_response as _run_active_response,
+    )
+    from wazuh_mcp.tools.write import (
+        run_active_response_on_group as _run_active_response_on_group,
     )
     from wazuh_mcp.tools.write import (
         update_rule as _update_rule,
@@ -1293,6 +1304,45 @@ def _register_everything(
             limiter=limiter,
             audit=audit_emitter,
             args_model=RunActiveResponseArgs,
+            result_model=WriteResult,
+        )
+    )
+
+    async def _run_ar_on_group_inner(**kwargs: Any) -> Any:
+        args = RunActiveResponseOnGroupArgs(**kwargs)
+        session = current_session()
+        _check_write_allowed(session, "write.run_active_response_on_group")
+        if ar_group_allowlist_policy is None:
+            raise WazuhError(
+                "forbidden",
+                "agent_group_allowlist not configured for this tenant",
+                403,
+            )
+        ar_group_allowed = list(ar_group_allowlist_policy(session))
+        sapi = await server_api_pool.acquire(session.tenant_id)
+        return await _run_active_response_on_group(
+            args=args,
+            session=session,
+            server_api=sapi,
+            ar_group_allowlist=ar_group_allowed,
+        )
+
+    mcp_app.tool(
+        name="write.run_active_response_on_group",
+        description=_write_desc_prefix
+        + "Runs a tenant-allowlisted active-response command on every agent in "
+        + "the named group. The group name must be enumerated in the tenant's "
+        + "agent_group_allowlist; the command must be enumerated in "
+        + "active_response_allowlist (same as write.run_active_response).",
+        meta={"toolset": "writes"},
+    )(
+        instrumented_tool(
+            tool_name="write.run_active_response_on_group",
+            handler=_run_ar_on_group_inner,
+            rbac_policy=rbac_policy,
+            limiter=limiter,
+            audit=audit_emitter,
+            args_model=RunActiveResponseOnGroupArgs,
             result_model=WriteResult,
         )
     )

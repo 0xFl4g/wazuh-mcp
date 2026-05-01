@@ -79,6 +79,7 @@ _WRITE_TOOL_NAMES: set[str] = {
     "write.create_rule",
     "write.update_rule",
     "write.run_active_response",
+    "write.run_active_response_on_group",
 }
 
 
