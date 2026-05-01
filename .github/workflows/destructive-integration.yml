@@ -44,9 +44,28 @@ jobs:
       - name: Run destructive integration tests
         run: uv run pytest -m "destructive" -v --junitxml=destructive-report.xml
 
-      - name: Upload JUnit on failure
-        if: failure()
+      - name: Always-dump compose logs
+        if: always()
+        run: |
+          mkdir -p integration-logs
+          docker compose -p wazuh-mcp-destructive -f docker/integration-compose.yml ps -a > integration-logs/compose-ps.log 2>&1 || true
+          docker compose -p wazuh-mcp-destructive -f docker/integration-compose.yml logs --no-color --tail=2000 > integration-logs/compose.log 2>&1 || true
+          for svc in wazuh-manager wazuh-indexer keycloak wazuh-agent; do
+            docker compose -p wazuh-mcp-destructive -f docker/integration-compose.yml logs --no-color "$svc" > "integration-logs/${svc}.log" 2>&1 || true
+          done
+
+      - name: Always-upload destructive logs
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: destructive-logs-${{ matrix.wazuh_version }}
+          path: integration-logs/
+          retention-days: 7
+
+      - name: Always-upload JUnit
+        if: always()
         uses: actions/upload-artifact@v7
         with:
           name: destructive-junit-${{ matrix.wazuh_version }}
           path: destructive-report.xml
+          if-no-files-found: ignore

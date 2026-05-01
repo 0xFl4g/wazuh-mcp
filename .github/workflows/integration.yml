@@ -48,24 +48,28 @@ jobs:
       - name: Run integration suite
         run: uv run pytest -m "integration and not destructive" -v --junitxml=integration-report.xml
 
-      - name: Upload JUnit on failure
-        if: failure()
-        uses: actions/upload-artifact@v7
-        with:
-          name: integration-report-${{ matrix.wazuh_version }}
-          path: integration-report.xml
-
-      - name: Dump compose logs on failure
-        if: failure()
+      - name: Always-dump compose logs
+        if: always()
         run: |
-          docker compose -p wazuh-mcp-ci -f docker/integration-compose.yml ps -a > compose.log 2>&1 || true
-          echo "" >> compose.log
-          echo "=== docker compose logs --tail=300 ===" >> compose.log
-          docker compose -p wazuh-mcp-ci -f docker/integration-compose.yml logs --no-color --tail=300 >> compose.log 2>&1 || true
+          mkdir -p integration-logs
+          docker compose -p wazuh-mcp-ci -f docker/integration-compose.yml ps -a > integration-logs/compose-ps.log 2>&1 || true
+          docker compose -p wazuh-mcp-ci -f docker/integration-compose.yml logs --no-color --tail=2000 > integration-logs/compose.log 2>&1 || true
+          for svc in wazuh-manager wazuh-indexer keycloak wazuh-agent; do
+            docker compose -p wazuh-mcp-ci -f docker/integration-compose.yml logs --no-color "$svc" > "integration-logs/${svc}.log" 2>&1 || true
+          done
 
-      - name: Upload compose logs
-        if: failure()
+      - name: Always-upload integration logs
+        if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: compose-log-${{ matrix.wazuh_version }}
-          path: compose.log
+          name: integration-logs-${{ matrix.wazuh_version }}
+          path: integration-logs/
+          retention-days: 7
+
+      - name: Always-upload JUnit
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: integration-junit-${{ matrix.wazuh_version }}
+          path: integration-report.xml
+          if-no-files-found: ignore
