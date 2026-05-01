@@ -80,7 +80,7 @@ tenants:
     rate_limit:
       tenant:
         capacity: 2
-        refill_per_sec: 1.0
+        refill_per_sec: 10.0
       session:
         capacity: 100
         refill_per_sec: 1.0
@@ -441,7 +441,7 @@ async def raw_indexer_client():
     Used by audit-routing tests (test_per_tenant_audit_routing) to
     confirm events landed in the right index_prefix.
     """
-    from opensearchpy import AsyncOpenSearch  # ty: ignore[unresolved-import]
+    from opensearchpy import AsyncOpenSearch
 
     client = AsyncOpenSearch(
         hosts=[{"host": "localhost", "port": 9200}],
