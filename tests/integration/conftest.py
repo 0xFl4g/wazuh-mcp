@@ -11,6 +11,7 @@ import shutil
 import subprocess
 import tempfile
 import time
+from collections.abc import Iterator
 from pathlib import Path
 
 import httpx
@@ -273,3 +274,183 @@ def server_api_token():
         return resp.text.strip()
 
     return _get
+
+
+# ---------- M5a T9: audit-sinks-enabled fixture for cross-tenant audit-routing test ----------
+
+
+@pytest.fixture(scope="module")
+def mcp_http_server_audit_sinks() -> Iterator[str]:
+    """MCP HTTP server on 8773 with audit_sinks enabled per tenant.
+
+    Used by tests/integration/test_m4d_multi_tenant.py tests 2 + 4. The
+    main mcp_http_server fixture (port 8765) deliberately has no
+    audit_sinks (v0.7.4 revert) to keep most integration tests fast.
+    This fixture spawns a separate subprocess so audit-routing assertions
+    can be made without affecting other tests.
+
+    Yields the URL string (not None like mcp_http_server) so tests can
+    use it directly in _mcp_session(url, token).
+    """
+    cfg_dir = Path(tempfile.mkdtemp(prefix="wm-m5a-audit-"))
+    bind_port = 8773
+    url = f"http://127.0.0.1:{bind_port}"
+
+    (cfg_dir / "tenants.yaml").write_text(
+        """
+tenants:
+  - tenant_id: local
+    indexer_url: https://localhost:9200
+    verify_tls: false
+    ca_bundle_path: null
+    default_rbac_role: analyst
+    oauth_issuer: http://localhost:8080/realms/wazuh-mcp
+    oauth_audience: wazuh-mcp-api
+    rate_limit:
+      tenant: {capacity: 100, refill_per_sec: 10.0}
+      session: {capacity: 10, refill_per_sec: 1.0}
+    audit_sinks:
+      - kind: wazuh_indexer
+        index_prefix: local-audit
+        batch: 1
+        flush_ms: 200
+  - tenant_id: tenant_b
+    indexer_url: https://localhost:9200
+    verify_tls: false
+    ca_bundle_path: null
+    default_rbac_role: analyst
+    oauth_issuer: http://localhost:8080/realms/wazuh-mcp
+    oauth_audience: wazuh-mcp-api
+    rate_limit:
+      tenant: {capacity: 100, refill_per_sec: 10.0}
+      session: {capacity: 10, refill_per_sec: 1.0}
+    audit_sinks:
+      - kind: wazuh_indexer
+        index_prefix: tenant-b-audit
+        batch: 1
+        flush_ms: 200
+""".strip()
+    )
+    (cfg_dir / "secrets.yaml").write_text(
+        """
+local:
+  indexer_user: admin
+  indexer_password: admin
+  server_api_user: wazuh-wui
+  server_api_password: MCPmcp12345!
+tenant_b:
+  indexer_user: admin
+  indexer_password: admin
+  server_api_user: wazuh-wui
+  server_api_password: MCPmcp12345!
+""".strip()
+    )
+    (cfg_dir / "api_keys.yaml").write_text("api_keys: []\n")
+    (cfg_dir / "server.yaml").write_text(
+        f"""
+transport: http
+auth: oauth_chain
+http:
+  bind: "127.0.0.1:{bind_port}"
+  public_url: "{url}"
+oauth:
+  issuer: http://localhost:8080/realms/wazuh-mcp
+  audience: wazuh-mcp-api
+  rbac_claims: [wazuh_mcp_role, groups, roles]
+  algorithms: [RS256]
+  clock_skew_seconds: 30
+api_keys_file: {cfg_dir / "api_keys.yaml"}
+""".strip()
+    )
+
+    env = os.environ.copy()
+    env["WAZUH_MCP_CONFIG_DIR"] = str(cfg_dir)
+    proc = subprocess.Popen(
+        ["uv", "run", "wazuh-mcp"],
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+
+    started = False
+    for _ in range(60):
+        if proc.poll() is not None:
+            stdout, stderr = proc.communicate(timeout=5)
+            raise RuntimeError(
+                f"MCP HTTP server (audit-sinks) exited early\n"
+                f"stdout:\n{stdout.decode(errors='replace')}\n"
+                f"stderr:\n{stderr.decode(errors='replace')}"
+            )
+        try:
+            r = httpx.get(f"{url}/healthz", timeout=1)
+            if r.status_code == 200:
+                started = True
+                break
+        except httpx.HTTPError:
+            pass
+        time.sleep(0.5)
+
+    if not started:
+        proc.kill()
+        stdout, stderr = proc.communicate(timeout=5)
+        raise RuntimeError(
+            f"MCP HTTP server (audit-sinks) didn't come up in 30s\n"
+            f"stdout:\n{stdout.decode(errors='replace')}\n"
+            f"stderr:\n{stderr.decode(errors='replace')}"
+        )
+
+    try:
+        yield url
+    finally:
+        proc.terminate()
+        try:
+            proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+
+
+@pytest.fixture
+def hand_minted_phantom_token() -> str:
+    """A JWT signed with a known test key, claiming tenant_id='phantom'.
+
+    Used by tests/integration/test_m4d_multi_tenant.py test 4 to exercise
+    the M4c resolver-miss audit shape (unknown tenant_id KeyError →
+    sentinel tool='<rbac.resolve>'). Bypasses Keycloak — adding a
+    'phantom' tenant to the realm would pollute the cross-tenant tests
+    with a non-existent tenant fixture.
+
+    Implementation deferred: signing a non-Keycloak-issued token requires
+    either a custom JWKS endpoint trusted by the server OR access to
+    Keycloak's RS256 private key (which Keycloak doesn't expose). The
+    unit suite at tests/unit/test_rbac_resolver.py already pins the
+    resolver-miss audit shape directly. Carry-forward to M5b.
+    """
+    pytest.skip(
+        "hand-minted phantom token requires JWKS + private-key plumbing; "
+        "unit coverage in tests/unit/test_rbac_resolver.py covers the "
+        "resolver-miss audit shape. Deferred — see M5a T9 fixture comment "
+        "for the implementation gap."
+    )
+
+
+@pytest.fixture
+async def raw_indexer_client():
+    """Direct OpenSearch client (admin auth) for integration tests that
+    need to query the indexer outside the MCP layer.
+
+    Used by audit-routing tests (test_per_tenant_audit_routing) to
+    confirm events landed in the right index_prefix.
+    """
+    from opensearchpy import AsyncOpenSearch  # ty: ignore[unresolved-import]
+
+    client = AsyncOpenSearch(
+        hosts=[{"host": "localhost", "port": 9200}],
+        http_auth=("admin", "admin"),
+        use_ssl=True,
+        verify_certs=False,
+        ssl_show_warn=False,
+    )
+    try:
+        yield client
+    finally:
+        await client.close()
