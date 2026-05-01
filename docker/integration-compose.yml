@@ -29,7 +29,7 @@ services:
       - ./config/certs.yml:/config/certs.yml:ro
 
   wazuh-indexer:
-    image: wazuh/wazuh-indexer:4.9.0
+    image: wazuh/wazuh-indexer:${WAZUH_VERSION:-4.9.0}
     platform: linux/amd64
     hostname: wazuh-indexer
     depends_on:
@@ -54,7 +54,7 @@ services:
       start_period: 90s
 
   wazuh-manager:
-    image: wazuh/wazuh-manager:4.9.0
+    image: wazuh/wazuh-manager:${WAZUH_VERSION:-4.9.0}
     platform: linux/amd64
     hostname: wazuh-manager
     depends_on:

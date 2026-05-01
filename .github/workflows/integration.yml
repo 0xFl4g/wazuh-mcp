@@ -13,6 +13,18 @@ jobs:
   integration:
     runs-on: ubuntu-latest   # amd64 — avoids QEMU segfault on arm64+darwin
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        wazuh_version:
+          - "4.9.0"
+          - "4.14.5"
+    if: |
+      github.event_name == 'schedule' ||
+      github.event_name == 'workflow_dispatch' ||
+      matrix.wazuh_version == '4.9.0'
+    env:
+      WAZUH_VERSION: ${{ matrix.wazuh_version }}
     steps:
       - uses: actions/checkout@v6
 
@@ -31,6 +43,7 @@ jobs:
         run: bash docker/bootstrap.sh
         env:
           COMPOSE_PROJECT_NAME: wazuh-mcp-ci
+          WAZUH_VERSION: ${{ matrix.wazuh_version }}
 
       - name: Run integration suite
         run: uv run pytest -m "integration and not destructive" -v --junitxml=integration-report.xml
@@ -39,7 +52,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v7
         with:
-          name: integration-report
+          name: integration-report-${{ matrix.wazuh_version }}
           path: integration-report.xml
 
       - name: Dump compose logs on failure
@@ -54,5 +67,5 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v7
         with:
-          name: compose-log
+          name: compose-log-${{ matrix.wazuh_version }}
           path: compose.log

@@ -13,6 +13,14 @@ jobs:
   destructive:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        wazuh_version:
+          - "4.9.0"
+          - "4.14.5"
+    env:
+      WAZUH_VERSION: ${{ matrix.wazuh_version }}
     steps:
       - uses: actions/checkout@v6
 
@@ -31,6 +39,7 @@ jobs:
         run: bash docker/bootstrap.sh
         env:
           COMPOSE_PROJECT_NAME: wazuh-mcp-destructive
+          WAZUH_VERSION: ${{ matrix.wazuh_version }}
 
       - name: Run destructive integration tests
         run: uv run pytest -m "destructive" -v --junitxml=destructive-report.xml
@@ -39,5 +48,5 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v7
         with:
-          name: destructive-junit
+          name: destructive-junit-${{ matrix.wazuh_version }}
           path: destructive-report.xml
