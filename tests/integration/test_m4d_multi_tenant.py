@@ -104,8 +104,9 @@ async def test_per_tenant_audit_routing(
         r = await session.call_tool("alerts.search_alerts", {"size": 1})
         assert not r.isError
 
-    # Wait briefly for QueuedSink to flush (default flush_ms=200; allow 2s).
-    await asyncio.sleep(2.0)
+    # Wait for QueuedSink to flush (default flush_ms=200 + indexer refresh
+    # interval). 5s gives generous margin on a CI runner under load.
+    await asyncio.sleep(5.0)
 
     # Query local-audit-* and tenant-b-audit-* directly via the indexer.
     # tenant-b-audit-* must contain the event; local-audit-* must NOT.
@@ -204,6 +205,13 @@ async def test_tenant_b_token_cannot_resolve_to_local(
     routing, the third rate-limits. This test asserts the negative
     of test 1 — confirming the claim isn't being silently ignored.
     """
+    import asyncio
+
+    # Tenant_b shares a module-scoped server with prior tests that may
+    # have exhausted the bucket. Wait for refill (refill_per_sec=1.0,
+    # capacity=2 → 2s for full refill).
+    await asyncio.sleep(2.5)
+
     async with _mcp_session(MCP_URL, keycloak_token_tenant_b()) as session:
         r1 = await session.call_tool("alerts.search_alerts", {"size": 1})
         assert not r1.isError
