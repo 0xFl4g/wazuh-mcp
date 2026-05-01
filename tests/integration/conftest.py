@@ -26,6 +26,8 @@ KEYCLOAK_URL = os.environ.get("KEYCLOAK_URL", "http://localhost:8080")
 KEYCLOAK_REALM = "wazuh-mcp"
 KEYCLOAK_CLIENT_ID = "wazuh-mcp-client"
 KEYCLOAK_CLIENT_SECRET = "test-client-secret"
+KEYCLOAK_CLIENT_ID_TENANT_B = "wazuh-mcp-client-tenant-b"
+KEYCLOAK_CLIENT_SECRET_TENANT_B = "test-client-secret-tenant-b"
 KEYCLOAK_TOKEN_URL = f"{KEYCLOAK_URL}/realms/{KEYCLOAK_REALM}/protocol/openid-connect/token"
 
 WAZUH_MANAGER_URL = os.environ.get("WAZUH_MANAGER_URL", "https://localhost:55000")
@@ -72,7 +74,7 @@ tenants:
     verify_tls: false
     ca_bundle_path: null
     default_rbac_role: analyst
-    oauth_issuer: http://localhost:8080/realms/wazuh-mcp-tenant-b
+    oauth_issuer: http://localhost:8080/realms/wazuh-mcp
     oauth_audience: wazuh-mcp-api
     rate_limit:
       tenant:
@@ -216,6 +218,33 @@ def keycloak_token():
                 "grant_type": "client_credentials",
                 "client_id": KEYCLOAK_CLIENT_ID,
                 "client_secret": KEYCLOAK_CLIENT_SECRET,
+            },
+            timeout=10,
+        )
+        resp.raise_for_status()
+        return resp.json()["access_token"]
+
+    return _get
+
+
+@pytest.fixture
+def keycloak_token_tenant_b():
+    """Mint a real RS256 access token for the tenant_b client.
+
+    Uses the second service-account (wazuh-mcp-client-tenant-b) added in
+    M5a T7. The token carries a hardcoded ``tenant_id: "tenant_b"`` claim
+    (Keycloak protocol-mapper) and a hardcoded ``wazuh_mcp_role: analyst``
+    claim. OAuthSessionFactory's claim-precedence logic
+    (oauth.py:115-130) routes the session to tenant_b's config.
+    """
+
+    def _get() -> str:
+        resp = httpx.post(
+            KEYCLOAK_TOKEN_URL,
+            data={
+                "grant_type": "client_credentials",
+                "client_id": KEYCLOAK_CLIENT_ID_TENANT_B,
+                "client_secret": KEYCLOAK_CLIENT_SECRET_TENANT_B,
             },
             timeout=10,
         )
