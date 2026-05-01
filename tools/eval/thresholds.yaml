@@ -1,0 +1,15 @@
+# Default thresholds applied to every model unless overridden in per_model.
+# Tuned at T6 baseline run; if calibration shows persistently lower accuracy,
+# revisit the corpus instead of lowering thresholds.
+default:
+  selection_only: 0.85
+  with_args: 0.90
+  multi_step: 0.80
+  overall: 0.85
+
+# Per-model overrides. Higher bar for top-tier models (real operators paying
+# for top-tier expect top-tier accuracy). Cheaper-tier overrides can be
+# added by community contributors.
+per_model:
+  claude-opus-4-7:
+    overall: 0.90
