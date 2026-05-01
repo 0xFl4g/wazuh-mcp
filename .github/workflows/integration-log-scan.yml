@@ -1,0 +1,59 @@
+name: integration-log-scan
+
+on:
+  workflow_run:
+    workflows: ["integration", "destructive-integration"]
+    types: [completed]
+
+permissions:
+  actions: read
+  contents: read
+  security-events: write
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Download all integration log artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+          pattern: '*-logs-*'
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: List downloaded artifacts
+        run: |
+          find artifacts/ -type f -name '*.log' | head -50
+
+      - name: Install gitleaks
+        run: |
+          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v8.18.4/gitleaks_8.18.4_linux_x64.tar.gz" \
+            | tar xzf - -C /tmp gitleaks
+          sudo mv /tmp/gitleaks /usr/local/bin/gitleaks
+          gitleaks version
+
+      - name: Scan log artifacts
+        run: |
+          if [ ! -d artifacts ] || [ -z "$(find artifacts -type f 2>/dev/null)" ]; then
+            echo "No artifacts to scan; skipping."
+            exit 0
+          fi
+          gitleaks detect \
+            --source artifacts/ \
+            --config .gitleaks.toml \
+            --redact \
+            --report-format sarif \
+            --report-path gitleaks-logs.sarif \
+            --no-git \
+            --verbose
+
+      - name: Upload SARIF to GH Security tab
+        if: always() && hashFiles('gitleaks-logs.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: gitleaks-logs.sarif
+          category: integration-log-scan
