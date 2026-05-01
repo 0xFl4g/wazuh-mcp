@@ -27,16 +27,46 @@ for _ in $(seq 1 60); do
 done
 
 echo "[bootstrap] initialising OpenSearch security plugin..."
-docker exec "$INDEXER_CONTAINER" bash -c '
-    export JAVA_HOME=/usr/share/wazuh-indexer/jdk
-    /usr/share/wazuh-indexer/plugins/opensearch-security/tools/securityadmin.sh \
-        -cd /usr/share/wazuh-indexer/opensearch-security/ \
-        -nhnv \
-        -cacert /usr/share/wazuh-indexer/certs/root-ca.pem \
-        -cert /usr/share/wazuh-indexer/certs/admin.pem \
-        -key /usr/share/wazuh-indexer/certs/admin-key.pem \
-        -h localhost
-' > /dev/null
+# securityadmin.sh exits 255 if the cluster isn't fully formed yet, even
+# when the HTTP probe above accepted a 401/503 response. Retry a few
+# times before giving up — observed flake on GH Actions runners.
+sec_init_ok="no"
+for attempt in 1 2 3 4; do
+    if docker exec "$INDEXER_CONTAINER" bash -c '
+        export JAVA_HOME=/usr/share/wazuh-indexer/jdk
+        /usr/share/wazuh-indexer/plugins/opensearch-security/tools/securityadmin.sh \
+            -cd /usr/share/wazuh-indexer/opensearch-security/ \
+            -nhnv \
+            -cacert /usr/share/wazuh-indexer/certs/root-ca.pem \
+            -cert /usr/share/wazuh-indexer/certs/admin.pem \
+            -key /usr/share/wazuh-indexer/certs/admin-key.pem \
+            -h localhost
+    ' > /dev/null 2>&1; then
+        sec_init_ok="yes"
+        break
+    fi
+    echo "[bootstrap] securityadmin.sh attempt $attempt failed, retrying in 10s..."
+    sleep 10
+done
+if [ "$sec_init_ok" != "yes" ]; then
+    echo "[bootstrap] securityadmin.sh failed after 4 attempts" >&2
+    exit 1
+fi
+
+# CI runners frequently sit above OpenSearch's default flood-stage disk
+# watermark (95%), which makes every index read-only-allow-delete. For
+# the integration fixture this is a hard blocker — relax thresholds and
+# clear any block that a prior run already set on the daily alerts
+# index. Test-fixture only; no production impact.
+echo "[bootstrap] relaxing disk watermarks for CI test cluster..."
+curl -sk -u "$ADMIN_AUTH" -X PUT "$INDEXER_URL/_cluster/settings" \
+    -H "Content-Type: application/json" \
+    -d '{"transient": {"cluster.routing.allocation.disk.watermark.low": "97%", "cluster.routing.allocation.disk.watermark.high": "98%", "cluster.routing.allocation.disk.watermark.flood_stage": "99%"}}' \
+    > /dev/null
+curl -sk -u "$ADMIN_AUTH" -X PUT "$INDEXER_URL/_all/_settings" \
+    -H "Content-Type: application/json" \
+    -d '{"index.blocks.read_only_allow_delete": null}' \
+    > /dev/null
 
 echo "[bootstrap] waiting for cluster to go green..."
 for _ in $(seq 1 30); do
