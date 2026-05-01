@@ -52,6 +52,7 @@ asyncio_mode = "auto"
 markers = [
     "integration: end-to-end tests requiring docker-compose Wazuh",
     "requires_manager: requires wazuh-manager container; auto-skipped on arm64+darwin (QEMU segfault)",
+    "destructive: mutates shared docker state — runs in destructive-integration.yml only",
 ]
 addopts = "-ra --strict-markers"
 

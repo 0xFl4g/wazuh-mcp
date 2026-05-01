@@ -33,7 +33,7 @@ jobs:
           COMPOSE_PROJECT_NAME: wazuh-mcp-ci
 
       - name: Run integration suite
-        run: uv run pytest -m integration -v --junitxml=integration-report.xml
+        run: uv run pytest -m "integration and not destructive" -v --junitxml=integration-report.xml
 
       - name: Upload JUnit on failure
         if: failure()

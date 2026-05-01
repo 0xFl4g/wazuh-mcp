@@ -1,0 +1,43 @@
+name: destructive-integration
+
+on:
+  schedule:
+    - cron: "13 5 * * 0"   # weekly Sunday 05:13 UTC
+  workflow_dispatch:
+
+concurrency:
+  group: destructive-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  destructive:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          version: latest
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Sync deps
+        run: uv sync --all-groups
+
+      - name: Bootstrap Wazuh + Keycloak
+        run: bash docker/bootstrap.sh
+        env:
+          COMPOSE_PROJECT_NAME: wazuh-mcp-destructive
+
+      - name: Run destructive integration tests
+        run: uv run pytest -m "destructive" -v --junitxml=destructive-report.xml
+
+      - name: Upload JUnit on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: destructive-junit
+          path: destructive-report.xml
