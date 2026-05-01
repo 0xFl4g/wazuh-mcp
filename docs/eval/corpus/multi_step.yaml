@@ -1,0 +1,104 @@
+# Tier 3: multi-step sequences — 5 prompts, expected_sequence.
+#
+# Each step lists tool name + optional args + stub_result. The slash
+# command replays stub_result between Claude's turns, simulating a
+# realistic Wazuh response. Sequence equality semantics: count match,
+# tool names match in order, args (if specified) match subset.
+
+- id: cluster_restart_and_verify
+  prompt: "Restart the Wazuh manager cluster and tell me when it's back up."
+  expected_sequence:
+    - tool: cluster.status
+      stub_result:
+        enabled: true
+        running: true
+        nodes:
+          - {name: "node-master", type: "master", status: "running"}
+    - tool: write.restart_manager
+      args: {scope: "cluster", confirm: true}
+      stub_result:
+        ok: true
+        scope: "cluster"
+        affected_nodes: ["node-master"]
+        timestamp: "2026-04-28T00:00:00Z"
+    - tool: cluster.status
+      stub_result:
+        enabled: true
+        running: true
+        nodes:
+          - {name: "node-master", type: "master", status: "running"}
+  category: triage
+
+- id: triage_alert_then_pivot
+  prompt: "Pull alert ABCD-1234 and then pivot on whatever IOC looks suspicious in it."
+  expected_sequence:
+    - tool: alerts.get_alert
+      args: {alert_id: "ABCD-1234"}
+      stub_result:
+        alert:
+          id: "ABCD-1234"
+          rule: {id: 5503, level: 5, description: "User authentication failure"}
+          agent: {id: "001", name: "host01"}
+          source_ip: "10.0.0.42"
+    - tool: hunt.pivot_by_ioc
+      stub_result:
+        alerts: []
+        total: 0
+        truncated: false
+  category: triage
+
+- id: agent_compromise_isolate
+  prompt: "Agent 001 is showing PowerShell anomalies. Isolate it."
+  expected_sequence:
+    - tool: alerts.alerts_by_agent
+      args: {agent_id: "001"}
+      stub_result:
+        alerts: []
+        total: 0
+        truncated: false
+    - tool: write.isolate_agent
+      args: {agent_ids: ["001"], confirm: true}
+      stub_result:
+        ok: true
+        affected_agents: ["001"]
+        failed_agents: []
+        timestamp: "2026-04-28T00:00:00Z"
+  category: writes
+
+- id: hunt_then_inspect_agent
+  prompt: "Hunt for failed logins in the last hour, then for whichever agent had the most, list its open ports."
+  expected_sequence:
+    - tool: hunt.hunt_query
+      stub_result:
+        alerts:
+          - {agent: {id: "002"}, rule: {id: 5503, level: 5}}
+          - {agent: {id: "002"}, rule: {id: 5503, level: 5}}
+          - {agent: {id: "001"}, rule: {id: 5503, level: 5}}
+        total: 3
+        truncated: false
+    - tool: agents.agent_ports
+      args: {agent_id: "002"}
+      stub_result:
+        agent_id: "002"
+        items: []
+        total: 0
+        truncated: false
+  category: hunt
+
+- id: vuln_then_inspect_packages
+  prompt: "Find any agent with critical CVEs, then list its installed packages."
+  expected_sequence:
+    - tool: vulnerabilities.search_vulnerabilities
+      stub_result:
+        vulnerabilities:
+          - {id: "CVE-2024-3094", agent_id: "003", severity: "Critical", package_name: "xz", package_version: "5.6.1"}
+        total: 1
+        truncated: false
+    - tool: agents.agent_packages
+      args: {agent_id: "003"}
+      stub_result:
+        agent_id: "003"
+        items: []
+        total: 0
+        truncated: false
+  category: vulns
