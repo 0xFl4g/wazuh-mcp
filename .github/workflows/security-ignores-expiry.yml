@@ -1,0 +1,33 @@
+name: security-ignores-expiry
+on:
+  schedule:
+    - cron: "33 6 * * 1"   # weekly Monday 06:33 UTC
+  workflow_dispatch:
+
+jobs:
+  check-expiry:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v7
+      - run: uv sync --frozen
+      - name: Run expiry check
+        id: check
+        run: uv run python tools/check_security_ignores.py
+        continue-on-error: true
+      - name: Open issue on expiry
+        if: steps.check.outcome == 'failure'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const body = fs.existsSync('.github/security-ignores.yaml')
+              ? fs.readFileSync('.github/security-ignores.yaml', 'utf8')
+              : '<file missing>';
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: 'security: expired ignore entry in .github/security-ignores.yaml',
+              body: `One or more entries in \`.github/security-ignores.yaml\` have expired. Review and either:\n\n- Re-extend the \`expires:\` date with a new justification, OR\n- Remove the entry and address the underlying CVE.\n\nCurrent file:\n\n\`\`\`yaml\n${body}\n\`\`\``,
+              labels: ['security', 'maintenance'],
+            });

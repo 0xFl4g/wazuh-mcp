@@ -23,6 +23,9 @@ jobs:
       - name: Sync deps
         run: uv sync --frozen
 
+      - name: Validate security-ignores schema
+        run: uv run python tools/check_security_ignores.py
+
       - name: Export requirements for audit
         run: uv export --no-emit-project --frozen > requirements.txt
 
