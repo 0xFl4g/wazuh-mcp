@@ -234,8 +234,10 @@ def keycloak_token_tenant_b():
     Uses the second service-account (wazuh-mcp-client-tenant-b) added in
     M5a T7. The token carries a hardcoded ``tenant_id: "tenant_b"`` claim
     (Keycloak protocol-mapper) and a hardcoded ``wazuh_mcp_role: analyst``
-    claim. OAuthSessionFactory's claim-precedence logic
-    (oauth.py:115-130) routes the session to tenant_b's config.
+    claim. Both tenants (local + tenant_b) share the same oauth_issuer in
+    M5a, so IssuerIndex returns None for the shared key and
+    OAuthSessionFactory falls back to claim-only tenant routing
+    (oauth.py:125-126).
     """
 
     def _get() -> str:

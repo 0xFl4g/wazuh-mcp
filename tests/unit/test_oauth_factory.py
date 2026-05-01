@@ -358,3 +358,41 @@ async def test_oauth_factory_wazuh_user_list_takes_first(seed_oidc, jwt_factory,
     finally:
         await factory.aclose()
     assert session.wazuh_user == "alice"
+
+
+async def test_shared_issuer_routes_by_tenant_id_claim(seed_oidc, jwt_factory):
+    """Two tenants sharing an oauth_issuer (e.g. multi-tenant Keycloak realm
+    with claim-mapper routing) must be resolved by the ``tenant_id`` claim.
+    IssuerIndex returns None for the shared key; OAuthSessionFactory's
+    claim-only path (oauth.py:125-126) routes the session correctly. A
+    token without a ``tenant_id`` claim hitting the shared issuer fails
+    closed with MissingClaim."""
+
+    shared_index = IssuerIndex([_tenant("acme"), _tenant("beta")])
+    factory = OAuthSessionFactory(
+        issuer=ISS,
+        audience=AUD,
+        algorithms=["RS256"],
+        rbac_claims=["wazuh_mcp_role"],
+        issuer_index=shared_index,
+    )
+    try:
+        token_beta = jwt_factory.make(
+            sub="alice", extra={"tenant_id": "beta", "wazuh_mcp_role": "analyst"}
+        )
+        session_beta = await factory.build({"headers": {"Authorization": f"Bearer {token_beta}"}})
+        assert session_beta.tenant_id == "beta"
+        assert session_beta.rbac_role == "analyst"
+
+        token_acme = jwt_factory.make(
+            sub="bob", extra={"tenant_id": "acme", "wazuh_mcp_role": "soc_analyst"}
+        )
+        session_acme = await factory.build({"headers": {"Authorization": f"Bearer {token_acme}"}})
+        assert session_acme.tenant_id == "acme"
+        assert session_acme.rbac_role == "soc_analyst"
+
+        token_no_claim = jwt_factory.make(sub="carol", extra={"wazuh_mcp_role": "analyst"})
+        with pytest.raises(MissingClaim):
+            await factory.build({"headers": {"Authorization": f"Bearer {token_no_claim}"}})
+    finally:
+        await factory.aclose()

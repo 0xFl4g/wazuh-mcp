@@ -1,5 +1,3 @@
-import pytest
-
 from wazuh_mcp.tenancy.config import TenantConfig
 from wazuh_mcp.tenancy.issuer_index import IssuerIndex
 
@@ -36,11 +34,25 @@ def test_tenants_without_issuer_are_skipped():
     assert idx.get("anything") is None
 
 
-def test_duplicate_issuers_rejected():
+def test_shared_issuer_collapses_to_none():
+    """Multi-tenant realms (e.g. Keycloak with claim-mapper routing)
+    legitimately share an issuer URL. IssuerIndex returns None for the
+    shared key so callers fall back to claim-based tenant resolution."""
+
     a = _tenant("acme", "https://idp.example.com/realms/shared")
     b = _tenant("beta", "https://idp.example.com/realms/shared")
-    with pytest.raises(ValueError, match="duplicate"):
-        IssuerIndex([a, b])
+    idx = IssuerIndex([a, b])
+    assert idx.get("https://idp.example.com/realms/shared") is None
+
+
+def test_three_way_shared_issuer_also_collapses():
+    """Three or more tenants sharing an issuer also collapse to None."""
+
+    a = _tenant("a", "https://idp.example.com/realms/x")
+    b = _tenant("b", "https://idp.example.com/realms/x")
+    c = _tenant("c", "https://idp.example.com/realms/x")
+    idx = IssuerIndex([a, b, c])
+    assert idx.get("https://idp.example.com/realms/x") is None
 
 
 def test_issuer_trailing_slash_ignored():
