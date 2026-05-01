@@ -2,7 +2,7 @@ name: integration-log-scan
 
 on:
   workflow_run:
-    workflows: ["integration", "destructive-integration"]
+    workflows: ["integration", "destructive-integration", "multi-manager-integration"]
     types: [completed]
 
 permissions:

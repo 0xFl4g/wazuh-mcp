@@ -46,7 +46,7 @@ jobs:
           WAZUH_VERSION: ${{ matrix.wazuh_version }}
 
       - name: Run integration suite
-        run: uv run pytest -m "integration and not destructive" -v --junitxml=integration-report.xml
+        run: uv run pytest -m "integration and not destructive and not multi_manager" -v --junitxml=integration-report.xml
 
       - name: Always-dump compose logs
         if: always()

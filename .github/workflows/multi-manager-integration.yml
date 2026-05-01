@@ -1,0 +1,81 @@
+name: multi-manager-integration
+
+on:
+  schedule:
+    - cron: "13 6 * * 0"   # weekly Sunday 06:13 UTC
+  workflow_dispatch:
+
+concurrency:
+  group: multi-manager-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  multi-manager:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        wazuh_version:
+          - "4.9.0"
+          - "4.14.5"
+    env:
+      WAZUH_VERSION: ${{ matrix.wazuh_version }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          version: latest
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Sync deps
+        run: uv sync --all-groups
+
+      - name: Bootstrap both Wazuh clusters
+        run: bash docker/bootstrap.sh
+        env:
+          COMPOSE_PROJECT_NAME: wazuh-mcp-mm
+          MULTI_MANAGER: "1"
+          WAZUH_VERSION: ${{ matrix.wazuh_version }}
+
+      - name: Run multi-manager tests
+        run: uv run pytest -m "multi_manager" -v --junitxml=mm-report.xml
+
+      - name: Always-dump compose logs
+        if: always()
+        run: |
+          mkdir -p integration-logs
+          docker compose -p wazuh-mcp-mm \
+            -f docker/integration-compose.yml \
+            -f docker/multi-manager-compose.yml \
+            ps -a > integration-logs/compose-ps.log 2>&1 || true
+          docker compose -p wazuh-mcp-mm \
+            -f docker/integration-compose.yml \
+            -f docker/multi-manager-compose.yml \
+            logs --no-color --tail=2000 > integration-logs/compose.log 2>&1 || true
+          for svc in wazuh-manager wazuh-indexer wazuh-manager-2 wazuh-indexer-2 keycloak wazuh-agent; do
+            docker compose -p wazuh-mcp-mm \
+              -f docker/integration-compose.yml \
+              -f docker/multi-manager-compose.yml \
+              logs --no-color "$svc" > "integration-logs/${svc}.log" 2>&1 || true
+          done
+
+      - name: Always-upload multi-manager logs
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: mm-logs-${{ matrix.wazuh_version }}
+          path: integration-logs/
+          retention-days: 7
+
+      - name: Always-upload JUnit
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: mm-junit-${{ matrix.wazuh_version }}
+          path: mm-report.xml
+          if-no-files-found: ignore
