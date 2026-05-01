@@ -129,14 +129,20 @@ class OAuthSessionFactory(SessionFactory):
         else:
             raise MissingClaim("tenant_id", detail="no tenant resolution path")
 
+        # Resolve the tenant's config by id — covers the shared-issuer case
+        # where iss_tenant_cfg is None but tenant_id was claim-resolved.
+        # Falls back to iss_tenant_cfg for legacy single-tenant-per-issuer
+        # configs where the by-id index entry equals the iss-mapped one.
+        tenant_cfg = self._index.get_by_tenant_id(tenant_id) or iss_tenant_cfg
+
         rbac = _pick_rbac(claims, self._rbac_claims)
         if rbac is None:
-            if iss_tenant_cfg is not None:
-                rbac = iss_tenant_cfg.default_rbac_role
+            if tenant_cfg is not None:
+                rbac = tenant_cfg.default_rbac_role
             else:
                 raise MissingClaim("rbac_role", detail="no rbac claim found")
 
-        wazuh_user = self._pick_wazuh_user(claims, iss_tenant_cfg)
+        wazuh_user = self._pick_wazuh_user(claims, tenant_cfg)
 
         return Session(
             user_id=str(sub),

@@ -62,3 +62,18 @@ def test_issuer_trailing_slash_ignored():
     got_slash = idx.get("https://idp.example.com/realms/acme/")
     assert got_plain is not None and got_plain.tenant_id == "acme"
     assert got_slash is not None and got_slash.tenant_id == "acme"
+
+
+def test_get_by_tenant_id_returns_config_even_for_shared_issuer():
+    """get_by_tenant_id is independent of issuer-keyed lookup — works
+    even when get(issuer) collapses to None for shared issuers."""
+
+    a = _tenant("acme", "https://idp.example.com/realms/shared")
+    b = _tenant("beta", "https://idp.example.com/realms/shared")
+    idx = IssuerIndex([a, b])
+    assert idx.get("https://idp.example.com/realms/shared") is None
+    got_a = idx.get_by_tenant_id("acme")
+    got_b = idx.get_by_tenant_id("beta")
+    assert got_a is not None and got_a.tenant_id == "acme"
+    assert got_b is not None and got_b.tenant_id == "beta"
+    assert idx.get_by_tenant_id("does-not-exist") is None

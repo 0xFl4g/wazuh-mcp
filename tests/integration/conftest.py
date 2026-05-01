@@ -80,7 +80,7 @@ tenants:
     rate_limit:
       tenant:
         capacity: 2
-        refill_per_sec: 0.001
+        refill_per_sec: 1.0
       session:
         capacity: 100
         refill_per_sec: 1.0

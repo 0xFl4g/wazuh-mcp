@@ -9,6 +9,12 @@ realms distinguished only by claim). When a lookup is ambiguous,
 falls back to claim-only routing. Tokens without a `tenant_id` claim
 hitting an ambiguous issuer fail with ``MissingClaim`` at the factory
 layer — fail-closed.
+
+Independent of issuer-keyed lookup, the index also exposes
+``get_by_tenant_id(tenant_id)`` so callers that already resolved a
+tenant_id (via claim) can fetch that tenant's config — needed for
+default_rbac_role fallback and wazuh_user_claim resolution when the
+issuer-keyed path returned None.
 """
 
 from __future__ import annotations
@@ -23,22 +29,26 @@ def _canonicalise(issuer: str) -> str:
 
 
 class IssuerIndex:
-    __slots__ = ("_by_issuer",)
+    __slots__ = ("_by_issuer", "_by_tenant_id")
     _by_issuer: dict[str, TenantConfig | None]
+    _by_tenant_id: dict[str, TenantConfig]
 
     def __init__(self, tenants: Iterable[TenantConfig]) -> None:
-        index: dict[str, TenantConfig | None] = {}
+        by_issuer: dict[str, TenantConfig | None] = {}
+        by_tenant_id: dict[str, TenantConfig] = {}
         for t in tenants:
+            by_tenant_id[t.tenant_id] = t
             if t.oauth_issuer is None:
                 continue
             key = _canonicalise(str(t.oauth_issuer))
-            if key in index:
+            if key in by_issuer:
                 # Ambiguous: two or more tenants share this issuer.
                 # Force claim-based resolution by collapsing to None.
-                index[key] = None
+                by_issuer[key] = None
             else:
-                index[key] = t
-        object.__setattr__(self, "_by_issuer", index)
+                by_issuer[key] = t
+        object.__setattr__(self, "_by_issuer", by_issuer)
+        object.__setattr__(self, "_by_tenant_id", by_tenant_id)
 
     def get(self, issuer: str) -> TenantConfig | None:
         """Return the tenant for this issuer.
@@ -49,3 +59,8 @@ class IssuerIndex:
         """
 
         return self._by_issuer.get(_canonicalise(issuer))
+
+    def get_by_tenant_id(self, tenant_id: str) -> TenantConfig | None:
+        """Return the tenant config for a known tenant_id, or None."""
+
+        return self._by_tenant_id.get(tenant_id)

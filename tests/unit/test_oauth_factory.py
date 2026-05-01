@@ -360,6 +360,80 @@ async def test_oauth_factory_wazuh_user_list_takes_first(seed_oidc, jwt_factory,
     assert session.wazuh_user == "alice"
 
 
+async def test_shared_issuer_falls_back_to_claim_tenants_default_rbac_role(seed_oidc, jwt_factory):
+    """Two tenants share an issuer; the JWT carries a ``tenant_id`` claim
+    but NO rbac claim (typical for service-account / client_credentials
+    tokens). The factory must use the *claim-resolved* tenant's
+    ``default_rbac_role`` — not iss_tenant_cfg, which is None for
+    shared issuers."""
+
+    tenant_b = TenantConfig(
+        tenant_id="beta",
+        indexer_url="https://x:9200",
+        verify_tls=False,
+        ca_bundle_path=None,
+        default_rbac_role="analyst",  # distinct from acme's "soc_analyst"
+        oauth_issuer=ISS,
+        oauth_audience=AUD,
+    )
+    shared_index = IssuerIndex([_tenant("acme"), tenant_b])
+    factory = OAuthSessionFactory(
+        issuer=ISS,
+        audience=AUD,
+        algorithms=["RS256"],
+        rbac_claims=["wazuh_mcp_role"],
+        issuer_index=shared_index,
+    )
+    try:
+        # No wazuh_mcp_role claim — fallback to tenant_b's default_rbac_role.
+        token = jwt_factory.make(sub="svc-account", extra={"tenant_id": "beta"})
+        session = await factory.build({"headers": {"Authorization": f"Bearer {token}"}})
+    finally:
+        await factory.aclose()
+    assert session.tenant_id == "beta"
+    assert session.rbac_role == "analyst"
+
+
+async def test_shared_issuer_resolves_wazuh_user_via_tenant_id_claim(seed_oidc, jwt_factory):
+    """Two tenants share an issuer; tenant_b configures a custom
+    ``wazuh_user_claim``. The factory must resolve wazuh_user via the
+    *claim-resolved* tenant's config, not iss_tenant_cfg (which is None
+    for the shared issuer)."""
+
+    tenant_b = TenantConfig(
+        tenant_id="beta",
+        indexer_url="https://x:9200",
+        verify_tls=False,
+        ca_bundle_path=None,
+        default_rbac_role="soc_analyst",
+        oauth_issuer=ISS,
+        oauth_audience=AUD,
+        wazuh_user_claim="preferred_username",
+    )
+    shared_index = IssuerIndex([_tenant("acme"), tenant_b])
+    factory = OAuthSessionFactory(
+        issuer=ISS,
+        audience=AUD,
+        algorithms=["RS256"],
+        rbac_claims=["wazuh_mcp_role"],
+        issuer_index=shared_index,
+    )
+    try:
+        token = jwt_factory.make(
+            sub="user-1",
+            extra={
+                "tenant_id": "beta",
+                "wazuh_mcp_role": "soc_analyst",
+                "preferred_username": "alice",
+            },
+        )
+        session = await factory.build({"headers": {"Authorization": f"Bearer {token}"}})
+    finally:
+        await factory.aclose()
+    assert session.tenant_id == "beta"
+    assert session.wazuh_user == "alice"
+
+
 async def test_shared_issuer_routes_by_tenant_id_claim(seed_oidc, jwt_factory):
     """Two tenants sharing an oauth_issuer (e.g. multi-tenant Keycloak realm
     with claim-mapper routing) must be resolved by the ``tenant_id`` claim.
