@@ -521,6 +521,135 @@ api_keys_file: {cfg_dir / "api_keys.yaml"}
         shutil.rmtree(cfg_dir, ignore_errors=True)
 
 
+# ---------- M5b T-C1: multi-manager fixture (two tenants -> two clusters) ----------
+
+
+@pytest.fixture(scope="module")
+def mcp_http_server_multi_manager() -> Iterator[str]:
+    """MCP HTTP server on 8780 with two tenants pinned to distinct clusters.
+
+    Used by tests/integration/test_multi_manager.py. Requires the
+    multi-manager docker overlay (MULTI_MANAGER=1 bash docker/bootstrap.sh)
+    so that wazuh-indexer-2 (port 9201) + wazuh-manager-2 (port 55001) are
+    up alongside the base cluster.
+
+    tenant_a -> indexer:9200 + manager:55000 (seeded with agent 001)
+    tenant_b -> indexer:9201 + manager:55001 (empty)
+
+    The federation tests assert that calls made under each tenant's
+    bearer hit ONLY that tenant's cluster — agent 001 must appear for
+    tenant_a and must NOT appear for tenant_b.
+    """
+    cfg_dir = Path(tempfile.mkdtemp(prefix="wm-m5b-mm-"))
+    bind_port = 8780
+    url = f"http://127.0.0.1:{bind_port}"
+
+    (cfg_dir / "tenants.yaml").write_text(
+        """
+tenants:
+  - tenant_id: local
+    indexer_url: https://localhost:9200
+    server_api_url: https://localhost:55000
+    verify_tls: false
+    ca_bundle_path: null
+    default_rbac_role: analyst
+    oauth_issuer: http://localhost:8080/realms/wazuh-mcp
+    oauth_audience: wazuh-mcp-api
+    rate_limit:
+      tenant: {capacity: 100, refill_per_sec: 10.0}
+      session: {capacity: 10, refill_per_sec: 1.0}
+  - tenant_id: tenant_b
+    indexer_url: https://localhost:9201
+    server_api_url: https://localhost:55001
+    verify_tls: false
+    ca_bundle_path: null
+    default_rbac_role: analyst
+    oauth_issuer: http://localhost:8080/realms/wazuh-mcp
+    oauth_audience: wazuh-mcp-api
+    rate_limit:
+      tenant: {capacity: 100, refill_per_sec: 10.0}
+      session: {capacity: 10, refill_per_sec: 1.0}
+""".strip()
+    )
+    (cfg_dir / "secrets.yaml").write_text(
+        """
+local:
+  indexer_user: admin
+  indexer_password: admin
+  server_api_user: wazuh-wui
+  server_api_password: MCPmcp12345!
+tenant_b:
+  indexer_user: admin
+  indexer_password: admin
+  server_api_user: wazuh-wui
+  server_api_password: MCPmcp12345!
+""".strip()
+    )
+    (cfg_dir / "api_keys.yaml").write_text("api_keys: []\n")
+    (cfg_dir / "server.yaml").write_text(
+        f"""
+transport: http
+auth: oauth_chain
+http:
+  bind: "127.0.0.1:{bind_port}"
+  public_url: "{url}"
+oauth:
+  issuer: http://localhost:8080/realms/wazuh-mcp
+  audience: wazuh-mcp-api
+  rbac_claims: [wazuh_mcp_role, groups, roles]
+  algorithms: [RS256]
+  clock_skew_seconds: 30
+api_keys_file: {cfg_dir / "api_keys.yaml"}
+""".strip()
+    )
+
+    env = os.environ.copy()
+    env["WAZUH_MCP_CONFIG_DIR"] = str(cfg_dir)
+    proc = subprocess.Popen(
+        ["uv", "run", "wazuh-mcp"],
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+
+    started = False
+    for _ in range(60):
+        if proc.poll() is not None:
+            stdout, stderr = proc.communicate(timeout=5)
+            raise RuntimeError(
+                "MCP HTTP server (multi-manager) exited early\n"
+                f"stdout:\n{stdout.decode(errors='replace')}\n"
+                f"stderr:\n{stderr.decode(errors='replace')}"
+            )
+        try:
+            r = httpx.get(f"{url}/healthz", timeout=1)
+            if r.status_code == 200:
+                started = True
+                break
+        except httpx.HTTPError:
+            pass
+        time.sleep(0.5)
+
+    if not started:
+        proc.kill()
+        stdout, stderr = proc.communicate(timeout=5)
+        raise RuntimeError(
+            "MCP HTTP server (multi-manager) didn't come up in 30s\n"
+            f"stdout:\n{stdout.decode(errors='replace')}\n"
+            f"stderr:\n{stderr.decode(errors='replace')}"
+        )
+
+    try:
+        yield url
+    finally:
+        proc.terminate()
+        try:
+            proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+        shutil.rmtree(cfg_dir, ignore_errors=True)
+
+
 @pytest.fixture
 def hand_minted_phantom_token() -> str:
     """A JWT signed with a known test key, claiming tenant_id='phantom'.

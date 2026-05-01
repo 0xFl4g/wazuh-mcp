@@ -24,6 +24,11 @@ class TenantConfig(BaseModel):
 
     tenant_id: Annotated[str, Field(pattern=TENANT_ID_PATTERN.pattern)]
     indexer_url: HttpUrl
+    # Optional explicit Wazuh Server API base URL. When unset, the pool
+    # derives it from indexer_url (port 9200 -> 55000 substitution). M5b
+    # T-C1 added this so multi-manager fixtures can point distinct tenants
+    # at distinct manager clusters without colliding on the derived URL.
+    server_api_url: HttpUrl | None = None
     verify_tls: bool = True
     ca_bundle_path: Path | None = None
     default_rbac_role: str

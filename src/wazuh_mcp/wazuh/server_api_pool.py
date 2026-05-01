@@ -34,8 +34,12 @@ class ServerApiClientPool:
             password = await self._secrets.get(tenant_id, "server_api_password")
             # Server API lives alongside the indexer in practice. TenantConfig
             # carries indexer_url; Server API base defaults to the same host
-            # on port 55000 unless overridden via server_api_url (future).
-            base_url = self._derive_server_api_url(tenant)
+            # on port 55000 unless overridden via server_api_url (M5b T-C1
+            # added the explicit field for multi-manager fixtures).
+            if tenant.server_api_url is not None:
+                base_url = str(tenant.server_api_url).rstrip("/")
+            else:
+                base_url = self._derive_server_api_url(tenant)
             client = ServerApiClient(
                 base_url=base_url,
                 user=user,

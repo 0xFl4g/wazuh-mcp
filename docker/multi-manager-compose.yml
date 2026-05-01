@@ -1,0 +1,63 @@
+# M5b T-C1. Extends integration-compose.yml with a SECOND Wazuh cluster
+# (manager-2 + indexer-2) on shifted host ports so federation tests can
+# assert per-tenant routing into distinct clusters.
+#
+# Usage: MULTI_MANAGER=1 bash docker/bootstrap.sh
+# (or directly:
+#  docker compose -f docker/integration-compose.yml \
+#                 -f docker/multi-manager-compose.yml up -d)
+services:
+  wazuh-indexer-2:
+    image: wazuh/wazuh-indexer:${WAZUH_VERSION:-4.9.0}
+    platform: linux/amd64
+    hostname: wazuh-indexer-2
+    depends_on:
+      generator:
+        condition: service_completed_successfully
+    environment:
+      - OPENSEARCH_JAVA_OPTS=-Xms1g -Xmx1g
+      - bootstrap.memory_lock=true
+    ulimits:
+      memlock: { soft: -1, hard: -1 }
+      nofile: { soft: 65536, hard: 65536 }
+    ports:
+      - "9201:9200"
+    volumes:
+      - ./config/opensearch.yml:/usr/share/wazuh-indexer/opensearch.yml:ro
+      - ./config/wazuh_indexer_ssl_certs/:/usr/share/wazuh-indexer/certs/:ro
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sk -u admin:admin https://localhost:9200/_cluster/health | grep -qE '\"status\":\"(green|yellow)\"'"]
+      interval: 10s
+      timeout: 5s
+      retries: 60
+      start_period: 90s
+
+  wazuh-manager-2:
+    image: wazuh/wazuh-manager:${WAZUH_VERSION:-4.9.0}
+    platform: linux/amd64
+    hostname: wazuh-manager-2
+    depends_on:
+      generator:
+        condition: service_completed_successfully
+      wazuh-indexer-2:
+        condition: service_started
+    environment:
+      - INDEXER_URL=https://wazuh-indexer-2:9200
+      - INDEXER_USERNAME=admin
+      - INDEXER_PASSWORD=admin
+      - FILEBEAT_SSL_VERIFICATION_MODE=none
+      - API_USERNAME=wazuh-wui
+      - API_PASSWORD=MCPmcp12345!
+    ports:
+      - "55001:55000"
+    volumes:
+      - ./config/wazuh_indexer_ssl_certs/:/etc/ssl/certs/wazuh/:ro
+      - ./config/wazuh_manager_ossec.conf:/wazuh-config-mount/etc/ossec.conf:ro
+    healthcheck:
+      test:
+        - "CMD-SHELL"
+        - "curl -skfu wazuh-wui:MCPmcp12345! https://localhost:55000/security/user/authenticate?raw=true | grep -q token"
+      interval: 15s
+      timeout: 10s
+      retries: 40
+      start_period: 120s
