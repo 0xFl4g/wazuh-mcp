@@ -1,0 +1,163 @@
+# Tier 1: selection-only — 30 prompts, expected_tool only.
+#
+# Each entry asserts that Claude picks the right tool name for the prompt.
+# Args are not validated (with_args.yaml covers args). The prompt is realistic
+# security-ops phrasing — not contrived to be easy. Categories distribute
+# coverage across the M3+M4c tool surface.
+
+# ---------- triage (5) ----------
+- id: triage_alerts_recent_high
+  prompt: "Show me the high-severity alerts from the last hour."
+  expected_tool: alerts.search_alerts
+  category: triage
+
+- id: triage_alert_by_id
+  prompt: "Pull alert ABCD-1234 from the indexer for me."
+  expected_tool: alerts.get_alert
+  category: triage
+
+- id: triage_alerts_for_agent
+  prompt: "What alerts have fired on agent 002 today?"
+  expected_tool: alerts.alerts_by_agent
+  category: triage
+
+- id: triage_alerts_by_mitre
+  prompt: "Find all alerts mapped to MITRE technique T1110 in the last 24 hours."
+  expected_tool: alerts.alerts_by_mitre
+  category: triage
+
+- id: triage_cluster_health
+  prompt: "Is the Wazuh cluster healthy right now? I need to know which nodes are up."
+  expected_tool: cluster.status
+  category: triage
+
+# ---------- hunt (5) ----------
+- id: hunt_failed_logins
+  prompt: "Search for failed login events on agent 001 from the last 6 hours."
+  expected_tool: hunt.hunt_query
+  category: hunt
+
+- id: hunt_pivot_by_ioc_hash
+  prompt: "Pivot on the SHA256 hash 'abcdef0123456789' — what alerts touched it?"
+  expected_tool: hunt.pivot_by_ioc
+  category: hunt
+
+- id: hunt_powershell_invocations
+  prompt: "I want to hunt for PowerShell command-line invocations across all agents this week."
+  expected_tool: hunt.hunt_query
+  category: hunt
+
+- id: hunt_pivot_by_ip
+  prompt: "Pivot on the source IP 10.0.0.42 across alerts."
+  expected_tool: hunt.pivot_by_ioc
+  category: hunt
+
+- id: hunt_dns_queries
+  prompt: "Search the alerts index for DNS queries to suspicious-domain.example."
+  expected_tool: hunt.hunt_query
+  category: hunt
+
+# ---------- writes (5) ----------
+- id: write_isolate_one_agent
+  prompt: "Isolate agent 001 from the network. I want to contain a possible compromise."
+  expected_tool: write.isolate_agent
+  category: writes
+
+- id: write_restart_agent
+  prompt: "Restart the agent on host 003 to clear its state."
+  expected_tool: write.restart_agent
+  category: writes
+
+- id: write_add_to_group
+  prompt: "Add agent 002 to the 'soc-monitored' group."
+  expected_tool: write.add_agent_to_group
+  category: writes
+
+- id: write_create_rule
+  prompt: "Create a new Wazuh detection rule with id 100200, level 7, that fires when 'sshd' logs an invalid user. Description: 'invalid SSH user'."
+  expected_tool: write.create_rule
+  category: writes
+
+- id: write_restart_cluster
+  prompt: "Restart the entire Wazuh manager cluster — I just rolled out a config change."
+  expected_tool: write.restart_manager
+  category: writes
+
+# ---------- inventory (5) ----------
+- id: inv_list_agents
+  prompt: "List all the agents currently registered with Wazuh."
+  expected_tool: agents.list_agents
+  category: inventory
+
+- id: inv_get_agent
+  prompt: "Show me the details of agent 001 — what's its OS and last keep-alive?"
+  expected_tool: agents.get_agent
+  category: inventory
+
+- id: inv_processes
+  prompt: "What processes are running on agent 002 right now?"
+  expected_tool: agents.agent_processes
+  category: inventory
+
+- id: inv_packages
+  prompt: "List the installed packages on agent 003."
+  expected_tool: agents.agent_packages
+  category: inventory
+
+- id: inv_open_ports
+  prompt: "What open ports does agent 001 have?"
+  expected_tool: agents.agent_ports
+  category: inventory
+
+# ---------- mitre (4) ----------
+- id: mitre_get_technique
+  prompt: "Look up MITRE technique T1110 for me — I need the description."
+  expected_tool: mitre.get_mitre_technique
+  category: mitre
+
+- id: mitre_search_credential_access
+  prompt: "Search MITRE for techniques related to credential access."
+  expected_tool: mitre.search_mitre
+  category: mitre
+
+- id: mitre_search_persistence
+  prompt: "What MITRE techniques are tagged with persistence tactics?"
+  expected_tool: mitre.search_mitre
+  category: mitre
+
+- id: mitre_lateral_movement_detail
+  prompt: "Get the details for MITRE T1021 — lateral movement."
+  expected_tool: mitre.get_mitre_technique
+  category: mitre
+
+# ---------- fim (3) ----------
+- id: fim_path_history
+  prompt: "Show me the file-integrity-monitoring history for /etc/passwd on agent 001."
+  expected_tool: fim.fim_history_for_path
+  category: fim
+
+- id: fim_changes_recent
+  prompt: "What FIM changes did agent 002 report in the last 24 hours?"
+  expected_tool: fim.fim_changes_by_agent
+  category: fim
+
+- id: fim_recent_changes_root
+  prompt: "List recent FIM changes under /root on agent 003."
+  expected_tool: fim.fim_changes_by_agent
+  category: fim
+
+# ---------- vulns (3) ----------
+- id: vuln_by_agent
+  prompt: "What CVEs are open on agent 001?"
+  expected_tool: vulnerabilities.list_vulnerabilities_by_agent
+  category: vulns
+
+- id: vuln_search_critical
+  prompt: "Search for critical-severity vulnerabilities across all agents."
+  expected_tool: vulnerabilities.search_vulnerabilities
+  category: vulns
+
+- id: vuln_search_specific_cve
+  prompt: "Find every host affected by CVE-2024-3094."
+  expected_tool: vulnerabilities.search_vulnerabilities
+  category: vulns
