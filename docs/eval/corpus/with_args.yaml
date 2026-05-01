@@ -1,0 +1,90 @@
+# Tier 2: selection + args — 10 prompts, expected_tool + expected_args.
+#
+# Subset semantics: every key in expected_args MUST be present in
+# Claude's tool_use input with matching value. Extra args from Claude
+# are OK (Claude may add optional args we don't pin). Missing required
+# args fail.
+#
+# Focus: high-stakes write tools (where wrong args = wrong action) and
+# hunt query (where wrong args = wrong query DSL).
+
+# ---------- writes (6) ----------
+- id: with_args_isolate_with_confirm
+  prompt: "Isolate agent 001 from the network. Yes I'm sure."
+  expected_tool: write.isolate_agent
+  expected_args:
+    agent_ids: ["001"]
+    confirm: true
+  category: writes
+
+- id: with_args_isolate_multi
+  prompt: "Isolate agents 001 and 002 — they're both compromised."
+  expected_tool: write.isolate_agent
+  expected_args:
+    agent_ids: ["001", "002"]
+    confirm: true
+  category: writes
+
+- id: with_args_restart_agent_with_id
+  prompt: "Restart agent 003. Confirm."
+  expected_tool: write.restart_agent
+  expected_args:
+    agent_id: "003"
+    confirm: true
+  category: writes
+
+- id: with_args_add_to_group
+  prompt: "Add agent 002 to the 'soc-monitored' group. I confirm."
+  expected_tool: write.add_agent_to_group
+  expected_args:
+    agent_id: "002"
+    group_id: "soc-monitored"
+    confirm: true
+  category: writes
+
+- id: with_args_restart_manager_node
+  prompt: "Restart just this manager node, not the cluster."
+  expected_tool: write.restart_manager
+  expected_args:
+    scope: "node"
+    confirm: true
+  category: writes
+
+- id: with_args_restart_manager_cluster
+  prompt: "Restart the whole Wazuh manager cluster. I confirm."
+  expected_tool: write.restart_manager
+  expected_args:
+    scope: "cluster"
+    confirm: true
+  category: writes
+
+# ---------- hunt (3) ----------
+- id: with_args_hunt_size_limit
+  prompt: "Search alerts for 'failed login' — limit to 50 hits."
+  expected_tool: hunt.hunt_query
+  expected_args:
+    size: 50
+  category: hunt
+
+- id: with_args_alerts_by_agent_specific
+  prompt: "Show alerts for agent 005 from the last hour, top 10."
+  expected_tool: alerts.alerts_by_agent
+  expected_args:
+    agent_id: "005"
+    size: 10
+  category: hunt
+
+- id: with_args_pivot_specific_hash
+  prompt: "Pivot on the SHA256 hash 'deadbeefcafebabe' across all alerts."
+  expected_tool: hunt.pivot_by_ioc
+  expected_args:
+    ioc_value: "deadbeefcafebabe"
+  category: hunt
+
+# ---------- mitre (1) ----------
+- id: with_args_mitre_specific_id
+  prompt: "Look up MITRE technique T1078."
+  expected_tool: mitre.get_mitre_technique
+  expected_args:
+    technique_id: "T1078"
+  category: mitre
