@@ -46,6 +46,12 @@ class TenantConfig(BaseModel):
     write_allowlist: list[str] | None = None
     active_response_allowlist: list[str] = Field(default_factory=list)
 
+    # M5b addition (T-A1). agent_group_allowlist: deny-all by default
+    # (mirrors active_response_allowlist precedent). Group names are
+    # used to fan out write.run_active_response_on_group calls; a session
+    # may target a group only if its name appears here.
+    agent_group_allowlist: list[str] = Field(default_factory=list)
+
     @field_validator("write_allowlist")
     @classmethod
     def _validate_writes(cls, v: list[str] | None) -> list[str] | None:
@@ -61,3 +67,21 @@ class TenantConfig(BaseModel):
         from wazuh_mcp.tenancy.m4_config import _validate_ar_command_name
 
         return [_validate_ar_command_name(name) for name in v]
+
+    @field_validator("agent_group_allowlist")
+    @classmethod
+    def _validate_ar_groups(cls, v: list[str]) -> list[str]:
+        from wazuh_mcp.tenancy.m4_config import _validate_ar_group_name
+
+        return [_validate_ar_group_name(name) for name in v]
+
+    @field_validator("agent_group_allowlist")
+    @classmethod
+    def _validate_ar_groups_max(cls, v: list[str]) -> list[str]:
+        from wazuh_mcp.tenancy.m4_config import _AGENT_GROUP_MAX
+
+        if len(v) > _AGENT_GROUP_MAX:
+            raise ValueError(
+                f"agent_group_allowlist length {len(v)} exceeds max {_AGENT_GROUP_MAX}"
+            )
+        return v

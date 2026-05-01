@@ -93,3 +93,34 @@ def make_ar_allowlist(
         return cfg.active_response_allowlist
 
     return _resolve
+
+
+def make_ar_group_allowlist(
+    registry: TenantRegistry,
+    audit_emitter: MultiSinkAuditEmitter,
+) -> Callable[[Session], list[str]]:
+    """M5b T-A1. Session-keyed agent_group_allowlist resolver.
+
+    Fail-closed pattern matches make_ar_allowlist (line 74): unknown
+    tenant_id -> audit emit with sentinel tool='<rbac.resolve>' +
+    error_reason='tenant_not_registered' + return [] (deny-all).
+    """
+
+    def _resolve(session: Session) -> list[str]:
+        try:
+            cfg = registry.get(session.tenant_id)
+        except KeyError:
+            audit_emitter.emit(
+                session=session,
+                tool=_RESOLVE_SENTINEL,
+                args={},
+                outcome="error",
+                result_count=0,
+                duration_ms=0,
+                error_code="forbidden",
+                error_reason=_REASON,
+            )
+            return []
+        return list(cfg.agent_group_allowlist)
+
+    return _resolve
