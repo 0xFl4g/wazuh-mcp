@@ -1,0 +1,23 @@
+# Custom gitleaks config for wazuh-mcp.
+# Extends the default rules with Wazuh-specific patterns.
+
+title = "wazuh-mcp gitleaks config"
+
+[extend]
+useDefault = true
+
+# Wazuh-specific patterns
+[[rules]]
+id = "wazuh-api-jwt"
+description = "Wazuh JWT-style API token in source"
+regex = '''wazuh[_-]?api[_-]?token\s*[:=]\s*["']?eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+'''
+
+[[rules]]
+id = "keycloak-client-secret-literal"
+description = "Keycloak client_secret in URL or env"
+regex = '''client_secret\s*[:=]\s*["']?[A-Za-z0-9_-]{32,}'''
+
+[[rules]]
+id = "wazuh-manager-password"
+description = "Wazuh manager API password literal"
+regex = '''(server_api_password|wazuh-wui|wazuh_manager_password)\s*[:=]\s*["']?[A-Za-z0-9!@#$%^&*]{12,}'''

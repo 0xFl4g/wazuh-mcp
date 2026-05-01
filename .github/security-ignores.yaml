@@ -1,0 +1,12 @@
+# Suppression list for security CI findings (pip-audit / safety).
+# Each entry MUST have all four fields. Pre-commit hook validates
+# schema. The security-ignores-expiry weekly cron (T11) opens a GitHub
+# issue if any entry's `expires:` date is past today.
+#
+# Format:
+#   - id: GHSA-xxxx-yyyy or PYSEC-NNNN
+#     reason: "Why this is OK to ignore right now."
+#     expires: "YYYY-MM-DD"
+#     reviewer: "github-username"
+
+ignores: []

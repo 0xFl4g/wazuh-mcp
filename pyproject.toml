@@ -35,6 +35,8 @@ dev = [
     "ruff>=0.15.12",
     "ty>=0.0.32",
     "moto[secretsmanager]>=5.0,<6",
+    "pip-audit>=2.7,<3",
+    "safety>=3.2,<4",
 ]
 
 [build-system]
