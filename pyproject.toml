@@ -55,6 +55,7 @@ markers = [
     "requires_manager: requires wazuh-manager container; auto-skipped on arm64+darwin (QEMU segfault)",
     "destructive: mutates shared docker state — runs in destructive-integration.yml only",
     "multi_manager: requires two distinct Wazuh clusters (multi-manager-integration.yml)",
+    "vault: requires Vault container in integration-compose.yml",
 ]
 addopts = "-ra --strict-markers"
 

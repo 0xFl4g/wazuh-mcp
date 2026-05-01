@@ -105,6 +105,26 @@ services:
       wazuh-manager:
         condition: service_started
 
+  # M5b T-D1. HashiCorp Vault 1.18 dev mode for the VaultSecretStore
+  # round-trip integration suite. DEV MODE ONLY — fixed root token,
+  # in-memory storage, sealing disabled. Never reuse this configuration
+  # outside the integration fixture.
+  vault:
+    image: hashicorp/vault:1.18
+    cap_add:
+      - IPC_LOCK
+    environment:
+      VAULT_DEV_ROOT_TOKEN_ID: test-root-token
+      VAULT_DEV_LISTEN_ADDRESS: 0.0.0.0:8200
+    ports:
+      - "8200:8200"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8200/v1/sys/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
+
   keycloak:
     image: quay.io/keycloak/keycloak:26.0
     hostname: keycloak
