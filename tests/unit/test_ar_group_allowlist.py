@@ -14,7 +14,7 @@ from wazuh_mcp.tenancy.registry import SingleTenantRegistry
 def _tenant(tenant_id: str = "t1", group_allow: list[str] | None = None) -> TenantConfig:
     return TenantConfig(
         tenant_id=tenant_id,
-        indexer_url="https://idx:9200",  # ty: ignore[invalid-argument-type]
+        indexer_url="https://idx:9200",
         default_rbac_role="admin",
         agent_group_allowlist=group_allow or [],
     )
@@ -57,7 +57,7 @@ def test_resolver_returns_tenant_allowlist() -> None:
         def emit(self, **kwargs):
             audit_calls.append(kwargs)
 
-    resolve = make_ar_group_allowlist(registry, _CapturingEmitter())  # ty: ignore[invalid-argument-type]
+    resolve = make_ar_group_allowlist(registry, _CapturingEmitter())
     session = Session(
         user_id="u1",
         tenant_id="t1",
@@ -78,7 +78,7 @@ def test_resolver_unknown_tenant_emits_audit_and_returns_empty() -> None:
         def emit(self, **kwargs):
             audit_calls.append(kwargs)
 
-    resolve = make_ar_group_allowlist(registry, _CapturingEmitter())  # ty: ignore[invalid-argument-type]
+    resolve = make_ar_group_allowlist(registry, _CapturingEmitter())
     session = Session(
         user_id="u1",
         tenant_id="phantom-tenant",
