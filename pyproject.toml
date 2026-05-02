@@ -1,6 +1,6 @@
 [project]
 name = "wazuh-mcp"
-version = "1.0.6"
+version = "1.0.7"
 description = "Model Context Protocol server for Wazuh SIEM/XDR"
 readme = "README.md"
 requires-python = ">=3.12"

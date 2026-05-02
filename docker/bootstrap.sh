@@ -38,11 +38,13 @@ for _ in $(seq 1 60); do
     sleep 5
 done
 
-# v1.0.4 (failure C): version-aware pre-wait + 8-attempt linear backoff.
-# Wazuh 4.14.5 image has a heavier JVM cold-start than 4.9 on shared GH
-# Actions runners; the prior 4-attempt 10s loop exhausted before the
-# indexer was ready and per-attempt stderr was swallowed so root cause
-# couldn't be pinpointed from the workflow log alone.
+# v1.0.7 (failure C re-re-re-fix): revert to v0.8.0-m5a baseline shape
+# (which worked for 4.9.0 in the v1.0.2 nightly) + add only the
+# version-aware pre-wait for newer images. The v1.0.4/5/6 attempts to
+# capture stderr via 2>&1 (without /dev/null redirect) caused docker
+# exec output-capture to mangle exit-code propagation in ways the
+# baseline > /dev/null 2>&1 didn't. Trust the baseline; its 'silent'
+# behavior was a feature, not a bug.
 WAZUH_VER="${WAZUH_VERSION:-4.9.0}"
 case "$WAZUH_VER" in
     4.9.*|4.10.*|4.11.*) PRE_WAIT_S=30 ;;
@@ -53,18 +55,11 @@ sleep "$PRE_WAIT_S"
 
 echo "[bootstrap] initialising OpenSearch security plugin..."
 # securityadmin.sh exits 255 if the cluster isn't fully formed yet, even
-# when the HTTP probe above accepted a 401/503 response. Retry with
-# linear backoff and capture per-attempt stderr.
+# when the HTTP probe above accepted a 401/503 response. Retry a few
+# times before giving up — observed flake on GH Actions runners.
 sec_init_ok="no"
 for attempt in 1 2 3 4 5 6 7 8; do
-    echo "[bootstrap] securityadmin.sh attempt $attempt..."
-    # v1.0.5 (failure C re-fix): capture exit code BEFORE the if-check.
-    # The previous `if cmd 2>&1; then ... else rc=$?` shape interacted
-    # badly with set -euo pipefail and produced bogus "failed (exit=0)"
-    # diagnostics on the v1.0.4 nightly. Using set +e around an explicit
-    # rc capture is unambiguous.
-    set +e
-    docker exec "$INDEXER_CONTAINER" bash -c '
+    if docker exec "$INDEXER_CONTAINER" bash -c '
         export JAVA_HOME=/usr/share/wazuh-indexer/jdk
         /usr/share/wazuh-indexer/plugins/opensearch-security/tools/securityadmin.sh \
             -cd /usr/share/wazuh-indexer/opensearch-security/ \
@@ -73,16 +68,13 @@ for attempt in 1 2 3 4 5 6 7 8; do
             -cert /usr/share/wazuh-indexer/certs/admin.pem \
             -key /usr/share/wazuh-indexer/certs/admin-key.pem \
             -h localhost
-    ' 2>&1
-    rc=$?
-    set -e
-    if [ "$rc" -eq 0 ]; then
-        echo "[bootstrap] securityadmin.sh OK on attempt $attempt"
+    ' > /dev/null 2>&1; then
         sec_init_ok="yes"
+        echo "[bootstrap] securityadmin.sh OK on attempt $attempt"
         break
     fi
     wait_s=$((attempt * 10))
-    echo "[bootstrap] securityadmin.sh attempt $attempt failed (exit=$rc), retrying in ${wait_s}s..."
+    echo "[bootstrap] securityadmin.sh attempt $attempt failed, retrying in ${wait_s}s..."
     sleep "$wait_s"
 done
 if [ "$sec_init_ok" != "yes" ]; then
@@ -198,10 +190,7 @@ if [ "${MULTI_MANAGER:-0}" = "1" ]; then
     echo "[bootstrap] (multi-manager) initialising OpenSearch security plugin on cluster 2..."
     sec_init_ok="no"
     for attempt in 1 2 3 4 5 6 7 8; do
-        echo "[bootstrap] (multi-manager) cluster-2 securityadmin.sh attempt $attempt..."
-        # v1.0.5 (failure C re-fix): mirror cluster-1 set+e/explicit-rc shape.
-        set +e
-        docker exec "$INDEXER_2_CONTAINER" bash -c '
+        if docker exec "$INDEXER_2_CONTAINER" bash -c '
             export JAVA_HOME=/usr/share/wazuh-indexer/jdk
             /usr/share/wazuh-indexer/plugins/opensearch-security/tools/securityadmin.sh \
                 -cd /usr/share/wazuh-indexer/opensearch-security/ \
@@ -210,16 +199,13 @@ if [ "${MULTI_MANAGER:-0}" = "1" ]; then
                 -cert /usr/share/wazuh-indexer/certs/admin.pem \
                 -key /usr/share/wazuh-indexer/certs/admin-key.pem \
                 -h localhost
-        ' 2>&1
-        rc=$?
-        set -e
-        if [ "$rc" -eq 0 ]; then
-            echo "[bootstrap] (multi-manager) cluster-2 securityadmin.sh OK on attempt $attempt"
+        ' > /dev/null 2>&1; then
             sec_init_ok="yes"
+            echo "[bootstrap] (multi-manager) cluster-2 securityadmin.sh OK on attempt $attempt"
             break
         fi
         wait_s=$((attempt * 10))
-        echo "[bootstrap] (multi-manager) cluster-2 securityadmin.sh attempt $attempt failed (exit=$rc), retrying in ${wait_s}s..."
+        echo "[bootstrap] (multi-manager) cluster-2 securityadmin.sh attempt $attempt failed, retrying in ${wait_s}s..."
         sleep "$wait_s"
     done
     if [ "$sec_init_ok" != "yes" ]; then
