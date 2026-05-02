@@ -21,3 +21,21 @@ regex = '''client_secret\s*[:=]\s*["']?[A-Za-z0-9_-]{32,}'''
 id = "wazuh-manager-password"
 description = "Wazuh manager API password literal"
 regex = '''(server_api_password|wazuh-wui|wazuh_manager_password)\s*[:=]\s*["']?[A-Za-z0-9!@#$%^&*]{12,}'''
+
+# Global allowlist — patterns that gitleaks otherwise flags as
+# generic-api-key but are known transient test-fixture artifacts
+# in integration log uploads (T-G2b chained scan workflow).
+[allowlist]
+description = "Test-fixture noise from integration log artifacts"
+regexes = [
+  # Vault dev-mode prints a fresh random unseal key + the literal
+  # 'test-root-token' on every startup. Both leak into compose.log.
+  '''Unseal Key:\s+[A-Za-z0-9+/=]{40,}''',
+  '''Root Token:\s+test-root-token''',
+  # Keycloak demo realm tokens visible in compose logs (issued for
+  # the test user; expire in 5min, no reuse value).
+  '''eyJhbGciOi[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+''',
+]
+paths = [
+  '''integration-logs.*''',
+]
