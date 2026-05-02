@@ -21,7 +21,7 @@ from pathlib import Path
 import httpx
 import pytest
 
-from tests.integration.test_m4b_writes import (  # type: ignore[import-not-found]
+from tests.integration._helpers import (  # type: ignore[import-not-found]
     _spawn_server,
     _write_writes_tenant,
 )
