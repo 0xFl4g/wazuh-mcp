@@ -96,18 +96,9 @@ async def test_per_tenant_audit_routing(
     mcp_http_server fixture intentionally has no audit_sinks (per v0.7.4)
     to keep the bulk of integration tests fast.
 
-    SKIPPED — M5b carry-forward. Even with a 5s flush window, the
-    tenant_b audit event doesn't land in tenant-b-audit-*. Unit suite
-    at tests/unit/test_per_tenant_sink_fanout.py already pins the
-    per-tenant fan-out routing directly. The integration-level
-    investigation (QueuedSink flush vs indexer refresh vs sink-build
-    wiring on the audit-sinks fixture path) is M5b T1 scope.
+    Re-enabled in v1.0.1 by T-G5b (template index_patterns now close over
+    self._prefix; tenant-b-audit-* matches what _today_index() produces).
     """
-    pytest.skip(
-        "audit-routing integration assertion needs deeper investigation; "
-        "unit coverage in tests/unit/test_per_tenant_sink_fanout.py pins "
-        "the per-tenant fan-out invariant. Carry-forward to M5b."
-    )
     import asyncio
 
     # Fire a tool call from tenant_b. The decorator emits an audit event
