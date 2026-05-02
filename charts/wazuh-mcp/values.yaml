@@ -1,0 +1,95 @@
+image:
+  repository: ghcr.io/0xfl4g/wazuh-mcp
+  tag: ""  # defaults to .Chart.AppVersion
+  pullPolicy: IfNotPresent
+
+replicaCount: 1  # see HA caveat in docs/deploy/helm.md (T-E5)
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+# server.yaml inlined to ConfigMap. Operator may override transport,
+# OAuth issuer, public URL, etc. Bind 0.0.0.0:8080 is required for
+# the in-cluster Service to reach the pod.
+server:
+  yaml: |
+    transport: http
+    auth: oauth_chain
+    http:
+      bind: "0.0.0.0:8080"
+      public_url: ""  # set to https://<ingress-host> when ingress.enabled=true
+    oauth:
+      issuer: ""
+      audience: wazuh-mcp-api
+      rbac_claims: [wazuh_mcp_role, groups, roles]
+      algorithms: [RS256]
+      clock_skew_seconds: 30
+
+# tenants.yaml inlined to ConfigMap. See spec for full shape.
+tenants:
+  yaml: |
+    tenants:
+      - tenant_id: default
+        indexer_url: https://wazuh-indexer:9200
+        verify_tls: false
+        default_rbac_role: analyst
+
+# secrets.yaml shape: {tenant_id: {indexer_user, indexer_password,
+# server_api_user, server_api_password, ...}}. When create=true the chart
+# templates a Secret containing the raw YAML in `secrets.yaml`. When
+# existingSecret is set, the operator pre-creates a Secret with that key.
+secrets:
+  create: false
+  existingSecret: ""
+  # Used only when create=true. The full secrets.yaml document, inlined.
+  yaml: |
+    default:
+      indexer_user: admin
+      indexer_password: changeme
+      server_api_user: wazuh-wui
+      server_api_password: changeme
+
+probes:
+  readiness:
+    path: /readyz
+    initialDelaySeconds: 5
+  liveness:
+    path: /healthz
+    initialDelaySeconds: 30
+
+service:
+  type: ClusterIP
+  port: 8080
+
+networkPolicy:
+  enabled: false
+  ingressFromNamespaces: []
+  egressTo:
+    wazuhManager:
+      host: ""
+      port: 55000
+    wazuhIndexer:
+      host: ""
+      port: 9200
+    oidcIssuer:
+      host: ""
+      port: 443
+
+serviceMonitor:
+  enabled: false
+  namespace: ""
+  interval: 30s
+
+ingress:
+  enabled: false
+  className: nginx
+  host: ""
+  annotations: {}
+  tls:
+    enabled: false
+    secretName: ""

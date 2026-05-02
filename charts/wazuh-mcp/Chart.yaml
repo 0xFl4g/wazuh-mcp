@@ -1,0 +1,16 @@
+apiVersion: v2
+name: wazuh-mcp
+description: Model Context Protocol server exposing Wazuh as tools for Claude
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+keywords:
+  - mcp
+  - wazuh
+  - security
+  - ai
+home: https://github.com/0xFl4g/wazuh-mcp
+sources:
+  - https://github.com/0xFl4g/wazuh-mcp
+maintainers:
+  - name: 0xFl4g

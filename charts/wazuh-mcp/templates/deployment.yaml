@@ -1,0 +1,71 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "wazuh-mcp.fullname" . }}
+  labels:
+    {{- include "wazuh-mcp.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "wazuh-mcp.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "wazuh-mcp.selectorLabels" . | nindent 8 }}
+      annotations:
+        # Roll the pod when ConfigMap or Secret values change.
+        checksum/config: {{ include (print $.Template.BasePath "/configmap-tenants.yaml") . | sha256sum }}
+        {{- if or .Values.secrets.create .Values.secrets.existingSecret }}
+        checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ include "wazuh-mcp.serviceAccountName" . }}
+      containers:
+        - name: wazuh-mcp
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          env:
+            # wazuh-mcp loads the entire config directory (server.yaml,
+            # tenants.yaml, secrets.yaml) from $WAZUH_MCP_CONFIG_DIR.
+            # See src/wazuh_mcp/__main__.py.
+            - name: WAZUH_MCP_CONFIG_DIR
+              value: /config
+          volumeMounts:
+            - name: config
+              mountPath: /config
+              readOnly: true
+            {{- if include "wazuh-mcp.secretName" . }}
+            - name: secrets
+              mountPath: /config/secrets.yaml
+              subPath: secrets.yaml
+              readOnly: true
+            {{- end }}
+          readinessProbe:
+            httpGet:
+              path: {{ .Values.probes.readiness.path }}
+              port: http
+            initialDelaySeconds: {{ .Values.probes.readiness.initialDelaySeconds }}
+          livenessProbe:
+            httpGet:
+              path: {{ .Values.probes.liveness.path }}
+              port: http
+            initialDelaySeconds: {{ .Values.probes.liveness.initialDelaySeconds }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+      volumes:
+        - name: config
+          configMap:
+            name: {{ include "wazuh-mcp.fullname" . }}-tenants
+        {{- if include "wazuh-mcp.secretName" . }}
+        - name: secrets
+          secret:
+            secretName: {{ include "wazuh-mcp.secretName" . }}
+            items:
+              - key: secrets.yaml
+                path: secrets.yaml
+        {{- end }}
