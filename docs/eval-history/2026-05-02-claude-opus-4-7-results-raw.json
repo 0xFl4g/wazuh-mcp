@@ -1,0 +1,287 @@
+{
+  "model": "claude-opus-4-7",
+  "run_date": "2026-05-02",
+  "results": [
+    {
+      "tier": "selection_only",
+      "id": "triage_alerts_recent_high",
+      "picked_tool": "alerts.search_alerts",
+      "picked_args": {"query": "rule.level >= 12", "time_range": "1h"}
+    },
+    {
+      "tier": "selection_only",
+      "id": "triage_alert_by_id",
+      "picked_tool": "alerts.get_alert",
+      "picked_args": {"alert_id": "ABCD-1234"}
+    },
+    {
+      "tier": "selection_only",
+      "id": "triage_alerts_for_agent",
+      "picked_tool": "alerts.alerts_by_agent",
+      "picked_args": {"agent_id": "002", "time_range": "1d"}
+    },
+    {
+      "tier": "selection_only",
+      "id": "triage_alerts_by_mitre",
+      "picked_tool": "alerts.alerts_by_mitre",
+      "picked_args": {"technique_id": "T1110", "time_range": "24h"}
+    },
+    {
+      "tier": "selection_only",
+      "id": "triage_cluster_health",
+      "picked_tool": "cluster.status",
+      "picked_args": {}
+    },
+    {
+      "tier": "selection_only",
+      "id": "hunt_failed_logins",
+      "picked_tool": "hunt.hunt_query",
+      "picked_args": {"query": "failed login", "agent_id": "001", "time_range": "6h"}
+    },
+    {
+      "tier": "selection_only",
+      "id": "hunt_pivot_by_ioc_hash",
+      "picked_tool": "hunt.pivot_by_ioc",
+      "picked_args": {"ioc_type": "sha256", "value": "abcdef0123456789"}
+    },
+    {
+      "tier": "selection_only",
+      "id": "hunt_powershell_invocations",
+      "picked_tool": "hunt.hunt_query",
+      "picked_args": {"query": "powershell", "time_range": "7d"}
+    },
+    {
+      "tier": "selection_only",
+      "id": "hunt_pivot_by_ip",
+      "picked_tool": "hunt.pivot_by_ioc",
+      "picked_args": {"ioc_type": "ip", "value": "10.0.0.42"}
+    },
+    {
+      "tier": "selection_only",
+      "id": "hunt_dns_queries",
+      "picked_tool": "hunt.hunt_query",
+      "picked_args": {"query": "suspicious-domain.example"}
+    },
+    {
+      "tier": "selection_only",
+      "id": "write_isolate_one_agent",
+      "picked_tool": "write.isolate_agent",
+      "picked_args": {"agent_id": "001", "confirm": true}
+    },
+    {
+      "tier": "selection_only",
+      "id": "write_restart_agent",
+      "picked_tool": "write.restart_agent",
+      "picked_args": {"agent_id": "003", "confirm": true}
+    },
+    {
+      "tier": "selection_only",
+      "id": "write_add_to_group",
+      "picked_tool": "write.add_agent_to_group",
+      "picked_args": {"agent_id": "002", "group": "soc-monitored", "confirm": true}
+    },
+    {
+      "tier": "selection_only",
+      "id": "write_create_rule",
+      "picked_tool": "write.create_rule",
+      "picked_args": {"rule_id": 100200, "level": 7, "description": "invalid SSH user", "confirm": true}
+    },
+    {
+      "tier": "selection_only",
+      "id": "write_restart_cluster",
+      "picked_tool": "write.restart_manager",
+      "picked_args": {"scope": "cluster", "confirm": true}
+    },
+    {
+      "tier": "selection_only",
+      "id": "inv_list_agents",
+      "picked_tool": "agents.list_agents",
+      "picked_args": {}
+    },
+    {
+      "tier": "selection_only",
+      "id": "inv_get_agent",
+      "picked_tool": "agents.get_agent",
+      "picked_args": {"agent_id": "001"}
+    },
+    {
+      "tier": "selection_only",
+      "id": "inv_processes",
+      "picked_tool": "agents.agent_processes",
+      "picked_args": {"agent_id": "002"}
+    },
+    {
+      "tier": "selection_only",
+      "id": "inv_packages",
+      "picked_tool": "agents.agent_packages",
+      "picked_args": {"agent_id": "003"}
+    },
+    {
+      "tier": "selection_only",
+      "id": "inv_open_ports",
+      "picked_tool": "agents.agent_ports",
+      "picked_args": {"agent_id": "001"}
+    },
+    {
+      "tier": "selection_only",
+      "id": "mitre_get_technique",
+      "picked_tool": "mitre.get_mitre_technique",
+      "picked_args": {"technique_id": "T1110"}
+    },
+    {
+      "tier": "selection_only",
+      "id": "mitre_search_credential_access",
+      "picked_tool": "mitre.search_mitre",
+      "picked_args": {"tactic": "credential-access"}
+    },
+    {
+      "tier": "selection_only",
+      "id": "mitre_search_persistence",
+      "picked_tool": "mitre.search_mitre",
+      "picked_args": {"tactic": "persistence"}
+    },
+    {
+      "tier": "selection_only",
+      "id": "mitre_lateral_movement_detail",
+      "picked_tool": "mitre.get_mitre_technique",
+      "picked_args": {"technique_id": "T1021"}
+    },
+    {
+      "tier": "selection_only",
+      "id": "fim_path_history",
+      "picked_tool": "fim.fim_history_for_path",
+      "picked_args": {"agent_id": "001", "path": "/etc/passwd"}
+    },
+    {
+      "tier": "selection_only",
+      "id": "fim_changes_recent",
+      "picked_tool": "fim.fim_changes_by_agent",
+      "picked_args": {"agent_id": "002", "time_range": "24h"}
+    },
+    {
+      "tier": "selection_only",
+      "id": "fim_recent_changes_root",
+      "picked_tool": "fim.fim_changes_by_agent",
+      "picked_args": {"agent_id": "003", "path_prefix": "/root"}
+    },
+    {
+      "tier": "selection_only",
+      "id": "vuln_by_agent",
+      "picked_tool": "vulnerabilities.list_vulnerabilities_by_agent",
+      "picked_args": {"agent_id": "001"}
+    },
+    {
+      "tier": "selection_only",
+      "id": "vuln_search_critical",
+      "picked_tool": "vulnerabilities.search_vulnerabilities",
+      "picked_args": {"severity": "Critical"}
+    },
+    {
+      "tier": "selection_only",
+      "id": "vuln_search_specific_cve",
+      "picked_tool": "vulnerabilities.search_vulnerabilities",
+      "picked_args": {"cve_id": "CVE-2024-3094"}
+    },
+    {
+      "tier": "with_args",
+      "id": "with_args_isolate_with_confirm",
+      "picked_tool": "write.isolate_agent",
+      "picked_args": {"agent_id": "001", "confirm": true}
+    },
+    {
+      "tier": "with_args",
+      "id": "with_args_isolate_multi",
+      "picked_tool": "write.isolate_agent",
+      "picked_args": {"agent_ids": ["001", "002"], "confirm": true}
+    },
+    {
+      "tier": "with_args",
+      "id": "with_args_restart_agent_with_id",
+      "picked_tool": "write.restart_agent",
+      "picked_args": {"agent_id": "003", "confirm": true}
+    },
+    {
+      "tier": "with_args",
+      "id": "with_args_add_to_group",
+      "picked_tool": "write.add_agent_to_group",
+      "picked_args": {"agent_id": "002", "group": "soc-monitored", "confirm": true}
+    },
+    {
+      "tier": "with_args",
+      "id": "with_args_restart_manager_node",
+      "picked_tool": "write.restart_manager",
+      "picked_args": {"scope": "node", "confirm": true}
+    },
+    {
+      "tier": "with_args",
+      "id": "with_args_restart_manager_cluster",
+      "picked_tool": "write.restart_manager",
+      "picked_args": {"scope": "cluster", "confirm": true}
+    },
+    {
+      "tier": "with_args",
+      "id": "with_args_hunt_size_limit",
+      "picked_tool": "hunt.hunt_query",
+      "picked_args": {"query": "failed login", "limit": 50}
+    },
+    {
+      "tier": "with_args",
+      "id": "with_args_alerts_by_agent_specific",
+      "picked_tool": "alerts.alerts_by_agent",
+      "picked_args": {"agent_id": "005", "time_range": "1h", "limit": 10}
+    },
+    {
+      "tier": "with_args",
+      "id": "with_args_pivot_specific_hash",
+      "picked_tool": "hunt.pivot_by_ioc",
+      "picked_args": {"ioc_type": "sha256", "value": "deadbeefcafebabe"}
+    },
+    {
+      "tier": "with_args",
+      "id": "with_args_mitre_specific_id",
+      "picked_tool": "mitre.get_mitre_technique",
+      "picked_args": {"technique_id": "T1078"}
+    },
+    {
+      "tier": "multi_step",
+      "id": "cluster_restart_and_verify",
+      "picked_sequence": [
+        {"tool": "cluster.status", "args": {}},
+        {"tool": "write.restart_manager", "args": {"scope": "cluster", "confirm": true}},
+        {"tool": "cluster.status", "args": {}}
+      ]
+    },
+    {
+      "tier": "multi_step",
+      "id": "triage_alert_then_pivot",
+      "picked_sequence": [
+        {"tool": "alerts.get_alert", "args": {"alert_id": "ABCD-1234"}},
+        {"tool": "hunt.pivot_by_ioc", "args": {"ioc_type": "ip", "value": "10.0.0.42"}}
+      ]
+    },
+    {
+      "tier": "multi_step",
+      "id": "agent_compromise_isolate",
+      "picked_sequence": [
+        {"tool": "alerts.alerts_by_agent", "args": {"agent_id": "001", "query": "powershell"}},
+        {"tool": "write.isolate_agent", "args": {"agent_id": "001", "confirm": true}}
+      ]
+    },
+    {
+      "tier": "multi_step",
+      "id": "hunt_then_inspect_agent",
+      "picked_sequence": [
+        {"tool": "hunt.hunt_query", "args": {"query": "failed login", "time_range": "1h"}},
+        {"tool": "agents.agent_ports", "args": {"agent_id": "002"}}
+      ]
+    },
+    {
+      "tier": "multi_step",
+      "id": "vuln_then_inspect_packages",
+      "picked_sequence": [
+        {"tool": "vulnerabilities.search_vulnerabilities", "args": {"severity": "Critical"}},
+        {"tool": "agents.agent_packages", "args": {"agent_id": "003"}}
+      ]
+    }
+  ]
+}
