@@ -62,7 +62,7 @@ No other new runtime deps.
 
 ## Configuration
 
-### Config file (`tenants.yaml`)
+### Config file (`server.yaml`)
 
 New top-level block, optional. Absence = use `InProcessRateLimiter`.
 
@@ -243,7 +243,7 @@ Goal: 4 tests.
 - New `redis.enabled` value (default `false`). When `true`:
   - Expects `redis.existingSecret` referencing a `Secret` with key `redis-url`.
   - `templates/deployment.yaml` injects `WAZUH_MCP_REDIS_URL` from the Secret.
-  - `tenants.yaml` ConfigMap gets the `rate_limiter:` block with `backend: "redis"` and the tunables from `redis.tunables.*` values.
+  - `server.yaml` ConfigMap gets the `rate_limiter:` block with `backend: "redis"` and the tunables from `redis.tunables.*` values.
 - `replicaCount` default **stays at 1** — audit-dedup blocker still exists; raising the default is a v1.2 change.
 - `values.schema.json` (if present) updated to validate new keys.
 - New `templates/secret-redis.yaml` is **not** shipped — operators bring their own Secret. The chart references `existingSecret` only.
