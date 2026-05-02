@@ -38,12 +38,26 @@ for _ in $(seq 1 60); do
     sleep 5
 done
 
+# v1.0.4 (failure C): version-aware pre-wait + 8-attempt linear backoff.
+# Wazuh 4.14.5 image has a heavier JVM cold-start than 4.9 on shared GH
+# Actions runners; the prior 4-attempt 10s loop exhausted before the
+# indexer was ready and per-attempt stderr was swallowed so root cause
+# couldn't be pinpointed from the workflow log alone.
+WAZUH_VER="${WAZUH_VERSION:-4.9.0}"
+case "$WAZUH_VER" in
+    4.9.*|4.10.*|4.11.*) PRE_WAIT_S=30 ;;
+    *) PRE_WAIT_S=90 ;;
+esac
+echo "[bootstrap] pre-waiting ${PRE_WAIT_S}s for indexer JVM startup (Wazuh ${WAZUH_VER})..."
+sleep "$PRE_WAIT_S"
+
 echo "[bootstrap] initialising OpenSearch security plugin..."
 # securityadmin.sh exits 255 if the cluster isn't fully formed yet, even
-# when the HTTP probe above accepted a 401/503 response. Retry a few
-# times before giving up — observed flake on GH Actions runners.
+# when the HTTP probe above accepted a 401/503 response. Retry with
+# linear backoff and capture per-attempt stderr.
 sec_init_ok="no"
-for attempt in 1 2 3 4; do
+for attempt in 1 2 3 4 5 6 7 8; do
+    echo "[bootstrap] securityadmin.sh attempt $attempt..."
     if docker exec "$INDEXER_CONTAINER" bash -c '
         export JAVA_HOME=/usr/share/wazuh-indexer/jdk
         /usr/share/wazuh-indexer/plugins/opensearch-security/tools/securityadmin.sh \
@@ -53,15 +67,19 @@ for attempt in 1 2 3 4; do
             -cert /usr/share/wazuh-indexer/certs/admin.pem \
             -key /usr/share/wazuh-indexer/certs/admin-key.pem \
             -h localhost
-    ' > /dev/null 2>&1; then
+    ' 2>&1; then
+        echo "[bootstrap] securityadmin.sh OK on attempt $attempt"
         sec_init_ok="yes"
         break
     fi
-    echo "[bootstrap] securityadmin.sh attempt $attempt failed, retrying in 10s..."
-    sleep 10
+    rc=$?
+    wait_s=$((attempt * 10))
+    echo "[bootstrap] securityadmin.sh attempt $attempt failed (exit=$rc), retrying in ${wait_s}s..."
+    sleep "$wait_s"
 done
 if [ "$sec_init_ok" != "yes" ]; then
-    echo "[bootstrap] securityadmin.sh failed after 4 attempts" >&2
+    echo "[bootstrap] securityadmin.sh failed after 8 attempts; dumping indexer logs:" >&2
+    docker logs --tail=200 "$INDEXER_CONTAINER" 2>&1 || true
     exit 1
 fi
 
@@ -164,9 +182,15 @@ if [ "${MULTI_MANAGER:-0}" = "1" ]; then
         sleep 5
     done
 
+    # v1.0.4 (failure C): mirror cluster-1 hardening — pre-wait + 8
+    # attempts with linear backoff + captured stderr + log-tail dump.
+    echo "[bootstrap] (multi-manager) pre-waiting ${PRE_WAIT_S}s for cluster-2 indexer JVM..."
+    sleep "$PRE_WAIT_S"
+
     echo "[bootstrap] (multi-manager) initialising OpenSearch security plugin on cluster 2..."
     sec_init_ok="no"
-    for attempt in 1 2 3 4; do
+    for attempt in 1 2 3 4 5 6 7 8; do
+        echo "[bootstrap] (multi-manager) cluster-2 securityadmin.sh attempt $attempt..."
         if docker exec "$INDEXER_2_CONTAINER" bash -c '
             export JAVA_HOME=/usr/share/wazuh-indexer/jdk
             /usr/share/wazuh-indexer/plugins/opensearch-security/tools/securityadmin.sh \
@@ -176,15 +200,19 @@ if [ "${MULTI_MANAGER:-0}" = "1" ]; then
                 -cert /usr/share/wazuh-indexer/certs/admin.pem \
                 -key /usr/share/wazuh-indexer/certs/admin-key.pem \
                 -h localhost
-        ' > /dev/null 2>&1; then
+        ' 2>&1; then
+            echo "[bootstrap] (multi-manager) cluster-2 securityadmin.sh OK on attempt $attempt"
             sec_init_ok="yes"
             break
         fi
-        echo "[bootstrap] (multi-manager) cluster-2 securityadmin.sh attempt $attempt failed, retrying in 10s..."
-        sleep 10
+        rc=$?
+        wait_s=$((attempt * 10))
+        echo "[bootstrap] (multi-manager) cluster-2 securityadmin.sh attempt $attempt failed (exit=$rc), retrying in ${wait_s}s..."
+        sleep "$wait_s"
     done
     if [ "$sec_init_ok" != "yes" ]; then
-        echo "[bootstrap] (multi-manager) cluster-2 securityadmin.sh failed after 4 attempts" >&2
+        echo "[bootstrap] (multi-manager) cluster-2 securityadmin.sh failed after 8 attempts; dumping indexer-2 logs:" >&2
+        docker logs --tail=200 "$INDEXER_2_CONTAINER" 2>&1 || true
         exit 1
     fi
 
