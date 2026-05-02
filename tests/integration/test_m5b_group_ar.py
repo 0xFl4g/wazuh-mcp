@@ -153,6 +153,4 @@ async def test_run_active_response_on_group_against_test_group(
         # failed_agents populated (Wazuh accepted but couldn't deliver).
         # Both prove the MCP wire path works.
         if not payload["ok"]:
-            assert (
-                len(payload["failed_agents"]) > 0
-            ), f"ok=False but no failed_agents: {payload}"
+            assert len(payload["failed_agents"]) > 0, f"ok=False but no failed_agents: {payload}"
