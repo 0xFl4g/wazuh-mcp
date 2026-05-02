@@ -12,6 +12,7 @@ import asyncio
 import enum
 import logging
 import math
+import socket
 import time
 from collections.abc import Awaitable, Callable
 from pathlib import Path
@@ -92,6 +93,15 @@ class _RedisCircuitBreaker:
             return
         self.last_transition = (self._state, new_state)
         self._state = new_state
+        try:
+            from wazuh_mcp.observability.metrics import m4_counters
+
+            m4_counters()["rate_limit_redis_state"].set(
+                int(new_state), {"replica": socket.gethostname()}
+            )
+        except Exception:
+            # Metrics never break business logic.
+            _LOG.debug("rate_limit_redis_state metric emission failed", exc_info=True)
         if new_state == BreakerState.OPEN:
             self._opened_at = self._now()
             self._half_open_in_flight = 0
@@ -243,14 +253,25 @@ class RedisRateLimiter:
             return await self._evalsha(sha, key, capacity, refill, n, ttl)
 
     async def _try_redis_acquire(self, key: str, cfg_bucket: BucketConfig, ttl: int) -> bool:
-        result = await self._run_script(
-            key=key,
-            capacity=cfg_bucket.capacity,
-            refill=cfg_bucket.refill_per_sec,
-            n=1,
-            ttl=ttl,
-        )
-        return result == 1
+        from wazuh_mcp.observability.metrics import m4_counters
+
+        counters = m4_counters()
+        try:
+            result = await self._run_script(
+                key=key,
+                capacity=cfg_bucket.capacity,
+                refill=cfg_bucket.refill_per_sec,
+                n=1,
+                ttl=ttl,
+            )
+            counters["rate_limit_redis_call_total"].add(1, {"outcome": "ok"})
+            return result == 1
+        except (RedisTimeoutError, TimeoutError):
+            counters["rate_limit_redis_call_total"].add(1, {"outcome": "timeout"})
+            raise
+        except Exception:
+            counters["rate_limit_redis_call_total"].add(1, {"outcome": "error"})
+            raise
 
     async def acquire(self, tenant_id: str, session_id: str) -> None:
         cfg = self._cfg(tenant_id)
@@ -263,9 +284,19 @@ class RedisRateLimiter:
                 lambda: self._try_redis_acquire(tenant_key, cfg.tenant, ttl)
             )
         except CircuitBreakerOpenError:
+            from wazuh_mcp.observability.metrics import m4_counters
+
+            m4_counters()["rate_limit_fallback_total"].add(
+                1, {"tenant_id": tenant_id, "scope": "tenant"}
+            )
             await self._ensure_fallback().acquire(tenant_id, session_id)
             return
         except (RedisConnectionError, RedisTimeoutError, TimeoutError):
+            from wazuh_mcp.observability.metrics import m4_counters
+
+            m4_counters()["rate_limit_fallback_total"].add(
+                1, {"tenant_id": tenant_id, "scope": "tenant"}
+            )
             _LOG.debug("rate_limit_redis_call_failed", exc_info=True)
             await self._ensure_fallback().acquire(tenant_id, session_id)
             return
@@ -283,9 +314,19 @@ class RedisRateLimiter:
                 lambda: self._try_redis_acquire(session_key, cfg.session, ttl)
             )
         except CircuitBreakerOpenError:
+            from wazuh_mcp.observability.metrics import m4_counters
+
+            m4_counters()["rate_limit_fallback_total"].add(
+                1, {"tenant_id": tenant_id, "scope": "session"}
+            )
             await self._ensure_fallback().acquire(tenant_id, session_id)
             return
         except (RedisConnectionError, RedisTimeoutError, TimeoutError):
+            from wazuh_mcp.observability.metrics import m4_counters
+
+            m4_counters()["rate_limit_fallback_total"].add(
+                1, {"tenant_id": tenant_id, "scope": "session"}
+            )
             _LOG.debug("rate_limit_redis_call_failed", exc_info=True)
             await self._ensure_fallback().acquire(tenant_id, session_id)
             return
