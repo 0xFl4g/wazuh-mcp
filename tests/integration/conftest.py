@@ -289,15 +289,24 @@ def mcp_http_server_audit_sinks() -> Iterator[str]:
     This fixture spawns a separate subprocess so audit-routing assertions
     can be made without affecting other tests.
 
+    M5b T-G4a: also registers a third tenant whose oauth_issuer points
+    at the in-process JWKS side-car. The side-car's private key signs
+    the hand_minted_phantom_token JWT (claiming an unregistered
+    tenant_id='phantom'), driving the M4c resolver-miss audit path
+    end-to-end via test_unknown_tenant_token_routes_to_globals_only.
+
     Yields the URL string (not None like mcp_http_server) so tests can
     use it directly in _mcp_session(url, token).
     """
+    from tests.integration._jwks_sidecar import start_sidecar, stop_sidecar
+
+    sidecar_issuer = start_sidecar()
     cfg_dir = Path(tempfile.mkdtemp(prefix="wm-m5a-audit-"))
     bind_port = 8773
     url = f"http://127.0.0.1:{bind_port}"
 
     (cfg_dir / "tenants.yaml").write_text(
-        """
+        f"""
 tenants:
   - tenant_id: local
     indexer_url: https://localhost:9200
@@ -307,8 +316,8 @@ tenants:
     oauth_issuer: http://localhost:8080/realms/wazuh-mcp
     oauth_audience: wazuh-mcp-api
     rate_limit:
-      tenant: {capacity: 100, refill_per_sec: 10.0}
-      session: {capacity: 10, refill_per_sec: 1.0}
+      tenant: {{capacity: 100, refill_per_sec: 10.0}}
+      session: {{capacity: 10, refill_per_sec: 1.0}}
     audit_sinks:
       - kind: wazuh_indexer
         index_prefix: local-audit
@@ -322,13 +331,25 @@ tenants:
     oauth_issuer: http://localhost:8080/realms/wazuh-mcp
     oauth_audience: wazuh-mcp-api
     rate_limit:
-      tenant: {capacity: 100, refill_per_sec: 10.0}
-      session: {capacity: 10, refill_per_sec: 1.0}
+      tenant: {{capacity: 100, refill_per_sec: 10.0}}
+      session: {{capacity: 10, refill_per_sec: 1.0}}
     audit_sinks:
       - kind: wazuh_indexer
         index_prefix: tenant-b-audit
         batch: 1
         flush_ms: 200
+  # M5b T-G4a: trusted side-car issuer. tenant_id 'phantom-trusted-issuer'
+  # exists ONLY so the OAuth chain accepts JWTs minted by the side-car.
+  # The hand_minted_phantom_token JWT claims tenant_id='phantom' (NOT
+  # this tenant_id), so resolver-miss fires and the audit lands on
+  # globals only — never on this tenant's per-tenant sinks.
+  - tenant_id: phantom-trusted-issuer
+    indexer_url: https://localhost:9200
+    verify_tls: false
+    ca_bundle_path: null
+    default_rbac_role: analyst
+    oauth_issuer: {sidecar_issuer}
+    oauth_audience: wazuh-mcp-api
 """.strip()
     )
     (cfg_dir / "secrets.yaml").write_text(
@@ -339,6 +360,11 @@ local:
   server_api_user: wazuh-wui
   server_api_password: MCPmcp12345!
 tenant_b:
+  indexer_user: admin
+  indexer_password: admin
+  server_api_user: wazuh-wui
+  server_api_password: MCPmcp12345!
+phantom-trusted-issuer:
   indexer_user: admin
   indexer_password: admin
   server_api_user: wazuh-wui
@@ -407,6 +433,7 @@ api_keys_file: {cfg_dir / "api_keys.yaml"}
             proc.wait(timeout=5)
         except subprocess.TimeoutExpired:
             proc.kill()
+        stop_sidecar()
 
 
 # ---------- M5b T-A3: group-AR fixture (admin role + agent_group_allowlist) ----------
@@ -651,26 +678,39 @@ api_keys_file: {cfg_dir / "api_keys.yaml"}
 
 
 @pytest.fixture
-def hand_minted_phantom_token() -> str:
-    """A JWT signed with a known test key, claiming tenant_id='phantom'.
+def jwks_sidecar_issuer() -> str:
+    """M5b T-G4a. Lower-level fixture exposing the side-car issuer URL.
 
-    Used by tests/integration/test_m4d_multi_tenant.py test 4 to exercise
-    the M4c resolver-miss audit shape (unknown tenant_id KeyError →
-    sentinel tool='<rbac.resolve>'). Bypasses Keycloak — adding a
-    'phantom' tenant to the realm would pollute the cross-tenant tests
-    with a non-existent tenant fixture.
-
-    Implementation deferred: signing a non-Keycloak-issued token requires
-    either a custom JWKS endpoint trusted by the server OR access to
-    Keycloak's RS256 private key (which Keycloak doesn't expose). The
-    unit suite at tests/unit/test_rbac_resolver.py already pins the
-    resolver-miss audit shape directly. Carry-forward to M5b.
+    Shared between hand_minted_phantom_token and
+    mcp_http_server_audit_sinks (which trusts this issuer for the
+    resolver-miss test). Idempotent: the side-car is a process-level
+    singleton, so multiple calls within a session hit the same server.
     """
-    pytest.skip(
-        "hand-minted phantom token requires JWKS + private-key plumbing; "
-        "unit coverage in tests/unit/test_rbac_resolver.py covers the "
-        "resolver-miss audit shape. Deferred — see M5a T9 fixture comment "
-        "for the implementation gap."
+    from tests.integration._jwks_sidecar import start_sidecar
+
+    return start_sidecar()
+
+
+@pytest.fixture
+def hand_minted_phantom_token(jwks_sidecar_issuer: str) -> str:
+    """M5b T-G4a (was M5a deferred). Mints a JWT signed by a side-car
+    JWKS test key, claiming tenant_id='phantom' (not in tenants.yaml).
+
+    Spec § 7.4 Path A (Keycloak admin claim-injection) and Path B
+    (Keycloak admin REST realm-key fetch) both proved non-viable. Path
+    A doesn't support arbitrary tenant_id claims; Path B doesn't work
+    because Keycloak does not expose realm signing private keys via
+    admin API. Plan adopted Path C: in-process Starlette+uvicorn JWKS
+    side-car. The mcp_http_server_audit_sinks fixture trusts the
+    side-car's issuer URL via a third tenant entry in its
+    tenants.yaml.
+    """
+    from tests.integration._jwks_sidecar import mint_phantom_token
+
+    return mint_phantom_token(
+        issuer=jwks_sidecar_issuer,
+        audience="wazuh-mcp-api",
+        tenant_id="phantom",
     )
 
 
