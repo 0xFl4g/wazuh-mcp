@@ -150,3 +150,15 @@ services:
       timeout: 3s
       retries: 60
       start_period: 30s
+
+  # v1.1 T-F1. Redis 7 for the RedisRateLimiter real-Redis integration suite.
+  redis:
+    image: redis:7-alpine
+    container_name: wazuhmcp-redis-${COMPOSE_PROJECT_NAME:-test}
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 3s
+      retries: 10
