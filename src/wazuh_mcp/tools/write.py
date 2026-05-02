@@ -282,6 +282,7 @@ async def run_active_response(
             "forbidden",
             f"active-response command {args.command_name!r} not allowlisted for tenant",
             403,
+            scope="ar_allowlist",
         )
     resp = await server_api.run_active_response(
         agent_ids=args.agent_ids,
@@ -335,6 +336,7 @@ async def run_active_response_on_group(
             "forbidden",
             f"agent group {args.group_name!r} not in tenant agent_group_allowlist",
             403,
+            scope="ar_group_allowlist",
         )
     resp = await server_api.run_active_response_on_group(
         group_name=args.group_name,

@@ -51,8 +51,18 @@ class InProcessRateLimiter:
             cfg = self._cfg(tenant_id)
             tbucket = self._tenant_buckets.setdefault(tenant_id, _mk_bucket(cfg.tenant))
             if not tbucket.try_acquire():
-                raise WazuhError("rate_limited", "tenant rate limit exceeded", 429)
+                raise WazuhError(
+                    "rate_limited",
+                    "tenant rate limit exceeded",
+                    429,
+                    scope="rate_limit:tenant",
+                )
             skey = (tenant_id, session_id)
             sbucket = self._session_buckets.setdefault(skey, _mk_bucket(cfg.session))
             if not sbucket.try_acquire():
-                raise WazuhError("rate_limited", "session rate limit exceeded", 429)
+                raise WazuhError(
+                    "rate_limited",
+                    "session rate limit exceeded",
+                    429,
+                    scope="rate_limit:session",
+                )

@@ -129,7 +129,10 @@ def instrumented_tool(
         try:
             await limiter.acquire(session.tenant_id, session.user_id)
         except WazuhError as rle:
-            scope = "tenant" if "tenant" in rle.message else "session"
+            # T-G1: read structured scope field directly. Fall back to "session"
+            # for any rate_limited raise that didn't set scope (defensive — all
+            # in-tree raise sites set it).
+            scope = "tenant" if rle.scope == "rate_limit:tenant" else "session"
             counters["rate_limited_total"].add(1, {"tenant": session.tenant_id, "scope": scope})
             counters["mcp_tool_calls_total"].add(
                 1,

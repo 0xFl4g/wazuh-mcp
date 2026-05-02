@@ -598,6 +598,7 @@ def _register_everything(
                 "forbidden",
                 f"tool {tool_name!r} not in tenant write_allowlist",
                 403,
+                scope="write_allowlist",
             )
 
     # ---------- alerts.* ----------
@@ -1280,6 +1281,7 @@ def _register_everything(
                 "forbidden",
                 "active-response not configured for this tenant",
                 403,
+                scope="ar_allowlist",
             )
         ar_allowed = list(ar_allowlist_policy(session))
         sapi = await server_api_pool.acquire(session.tenant_id)
@@ -1317,6 +1319,7 @@ def _register_everything(
                 "forbidden",
                 "agent_group_allowlist not configured for this tenant",
                 403,
+                scope="ar_group_allowlist",
             )
         ar_group_allowed = list(ar_group_allowlist_policy(session))
         sapi = await server_api_pool.acquire(session.tenant_id)

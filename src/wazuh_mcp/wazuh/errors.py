@@ -24,17 +24,29 @@ SAFE_CODES: Final[frozenset[str]] = frozenset(
 
 
 class WazuhError(Exception):
-    __slots__ = ("code", "message", "status_code")
+    __slots__ = ("code", "message", "scope", "status_code")
 
-    def __init__(self, code: str, message: str, status_code: int) -> None:
+    def __init__(
+        self,
+        code: str,
+        message: str,
+        status_code: int,
+        *,
+        scope: str | None = None,
+    ) -> None:
         if code not in SAFE_CODES:
             raise ValueError(f"unsafe error code: {code!r}")
         super().__init__(f"{code}: {message}")
         self.code = code
         self.message = message
         self.status_code = status_code
+        self.scope = scope
 
     def __repr__(self) -> str:
+        if self.scope is not None:
+            return (
+                f"WazuhError(code={self.code!r}, status={self.status_code}, scope={self.scope!r})"
+            )
         return f"WazuhError(code={self.code!r}, status={self.status_code})"
 
 
