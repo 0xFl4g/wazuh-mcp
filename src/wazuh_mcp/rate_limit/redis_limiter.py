@@ -136,3 +136,9 @@ class _RedisCircuitBreaker:
                 self._consecutive_failures += 1
                 if self._consecutive_failures >= self._error_threshold:
                     await self._transition(BreakerState.OPEN)
+                return
+            # OPEN: a stale in-flight probe from the previous HALF_OPEN window
+            # failed after a concurrent failure already re-opened. Refresh
+            # _opened_at so the cooling period restarts from the latest signal
+            # rather than the first one.
+            self._opened_at = self._now()
