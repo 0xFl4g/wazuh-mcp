@@ -138,7 +138,10 @@ async def test_expired_token_raises_expired(seed_oidc, jwt_factory, index):
         await factory.aclose()
 
 
-async def test_wrong_issuer_rejected(seed_oidc, jwt_factory, index):
+async def test_wrong_issuer_rejected(jwt_factory, index):
+    # v1.0.4 (failure A): wrong issuer is now rejected at the unverified-iss
+    # peek BEFORE any JWKS fetch — no seed_oidc fixture needed because the
+    # JWKS cache for the global issuer is never consulted.
     wrong = JwtFactory(issuer="https://attacker.example", audience=AUD)
     factory = OAuthSessionFactory(
         issuer=ISS,
@@ -468,5 +471,65 @@ async def test_shared_issuer_routes_by_tenant_id_claim(seed_oidc, jwt_factory):
         token_no_claim = jwt_factory.make(sub="carol", extra={"wazuh_mcp_role": "analyst"})
         with pytest.raises(MissingClaim):
             await factory.build({"headers": {"Authorization": f"Bearer {token_no_claim}"}})
+    finally:
+        await factory.aclose()
+
+
+async def test_v104_tenant_configured_issuer_accepted(httpx_mock: HTTPXMock):
+    """v1.0.4 (failure A) — A tenant in tenants.yaml may declare an
+    oauth_issuer distinct from the global oauth.issuer. JWTs minted by
+    that tenant's issuer must validate against the per-issuer JWKS,
+    NOT be rejected with "issuer mismatch" against the global issuer.
+    """
+
+    sidecar_iss = "https://sidecar.test"
+    sidecar_disco = f"{sidecar_iss}/.well-known/openid-configuration"
+    sidecar_jwks = f"{sidecar_iss}/jwks"
+    sidecar_factory = JwtFactory(issuer=sidecar_iss, audience=AUD)
+
+    httpx_mock.add_response(url=sidecar_disco, json=sidecar_factory.oidc_discovery(sidecar_jwks))
+    httpx_mock.add_response(url=sidecar_jwks, json=sidecar_factory.jwks())
+
+    # Index has a tenant with the side-car's issuer. Global oauth issuer
+    # is the unrelated ISS — but tokens from sidecar_iss MUST be accepted.
+    index = IssuerIndex([_tenant("trusted-sidecar", issuer=sidecar_iss)])
+    factory = OAuthSessionFactory(
+        issuer=ISS,
+        audience=AUD,
+        algorithms=["RS256"],
+        rbac_claims=["wazuh_mcp_role"],
+        issuer_index=index,
+    )
+    try:
+        token = sidecar_factory.make(
+            sub="phantom-user",
+            extra={"tenant_id": "trusted-sidecar", "wazuh_mcp_role": "analyst"},
+        )
+        session = await factory.build({"headers": {"Authorization": f"Bearer {token}"}})
+        assert session.tenant_id == "trusted-sidecar"
+        assert session.rbac_role == "analyst"
+    finally:
+        await factory.aclose()
+
+
+async def test_v104_unknown_issuer_rejected_before_jwks_fetch(jwt_factory, index):
+    """v1.0.4 (failure A) — An issuer NEITHER global NOR in IssuerIndex
+    must fail at the unverified-iss peek, before any JWKS fetch fires.
+    No httpx_mock seeded; if a JWKS request escapes, pytest_httpx errors.
+    """
+
+    attacker = JwtFactory(issuer="https://attacker.example", audience=AUD)
+    factory = OAuthSessionFactory(
+        issuer=ISS,
+        audience=AUD,
+        algorithms=["RS256"],
+        rbac_claims=["wazuh_mcp_role"],
+        issuer_index=index,
+    )
+    try:
+        token = attacker.make(sub="alice", extra={"tenant_id": "acme"})
+        with pytest.raises(InvalidToken) as excinfo:
+            await factory.build({"headers": {"Authorization": f"Bearer {token}"}})
+        assert "not trusted" in str(excinfo.value._detail or "")
     finally:
         await factory.aclose()

@@ -52,7 +52,21 @@ class OAuthSessionFactory(SessionFactory):
         self._rbac_claims = list(rbac_claims)
         self._index = issuer_index
         self._skew = clock_skew_seconds
-        self._jwks = jwks or JwksCache(issuer=self._issuer)
+        # v1.0.4 (failure A): per-issuer JWKS caches. The "global" issuer
+        # from server.yaml gets the supplied (or default) cache; each
+        # tenant-configured issuer in IssuerIndex gets its own cache,
+        # lazily created on first token from that issuer. This allows
+        # tenants in tenants.yaml to declare their own oauth_issuer
+        # (e.g. an in-process JWKS side-car or a partner IdP), with
+        # signature validation routed to the correct JWKS endpoint.
+        self._jwks_by_issuer: dict[str, JwksCache] = {
+            self._issuer: jwks or JwksCache(issuer=self._issuer),
+        }
+        # Pre-register tenant-configured issuers so InvalidToken fires
+        # at "issuer not trusted" rather than after a costly JWKS fetch.
+        self._valid_issuers: set[str] = {self._issuer}
+        for iss in issuer_index.known_issuers():
+            self._valid_issuers.add(iss)
 
     async def build(self, ctx: RequestContext) -> Session:
         token = _extract_bearer(ctx)
@@ -63,7 +77,14 @@ class OAuthSessionFactory(SessionFactory):
         if header.get("alg") not in self._algorithms:
             raise InvalidToken(detail=f"disallowed alg {header.get('alg')!r}")
 
-        jwk_dict = await self._jwks.get_key(kid)
+        # v1.0.4 (failure A): peek at unverified iss to route to the
+        # correct per-issuer JWKS cache. Issuer trust is enforced again
+        # post-verification in _validate_claims (defense in depth).
+        unverified_iss = _unverified_iss(token)
+        if unverified_iss not in self._valid_issuers:
+            raise InvalidToken(detail=f"issuer not trusted: {unverified_iss!r}")
+        jwks_cache = self._jwks_for(unverified_iss)
+        jwk_dict = await jwks_cache.get_key(kid)
         if jwk_dict is None:
             raise InvalidToken(detail=f"unknown kid {kid!r}")
         key = JWKRegistry.import_key(jwk_dict)
@@ -81,10 +102,22 @@ class OAuthSessionFactory(SessionFactory):
         self._validate_claims(claims)
         return self._build_session(claims)
 
+    def _jwks_for(self, issuer: str) -> JwksCache:
+        """Return (creating if needed) the per-issuer JWKS cache.
+
+        v1.0.4 (failure A): tenants in tenants.yaml may declare their
+        own oauth_issuer distinct from the global oauth.issuer.
+        """
+        cache = self._jwks_by_issuer.get(issuer)
+        if cache is None:
+            cache = JwksCache(issuer=issuer)
+            self._jwks_by_issuer[issuer] = cache
+        return cache
+
     def _validate_claims(self, claims: dict[str, Any]) -> None:
         now = int(time.time())
         iss = claims.get("iss")
-        if iss != self._issuer:
+        if iss not in self._valid_issuers:
             raise InvalidToken(detail=f"issuer mismatch: {iss!r}")
         aud = claims.get("aud")
         if isinstance(aud, str):
@@ -175,7 +208,8 @@ class OAuthSessionFactory(SessionFactory):
         return s or None
 
     async def aclose(self) -> None:
-        await self._jwks.aclose()
+        for cache in self._jwks_by_issuer.values():
+            await cache.aclose()
 
 
 def _extract_bearer(ctx: RequestContext) -> str:
@@ -193,6 +227,24 @@ def _unverified_header(token: str) -> dict[str, Any]:
         return json.loads(base64.urlsafe_b64decode(header_b64 + pad))
     except Exception as e:
         raise InvalidToken(detail="malformed JWT") from e
+
+
+def _unverified_iss(token: str) -> str:
+    """Peek at the JWT payload's `iss` claim WITHOUT verifying signature.
+
+    Caller MUST treat the result as untrusted until the JWKS lookup
+    succeeds (signature verifies) AND _validate_claims re-checks
+    membership in self._valid_issuers.
+    """
+    try:
+        parts = token.split(".")
+        payload_b64 = parts[1]
+        pad = "=" * (-len(payload_b64) % 4)
+        payload = json.loads(base64.urlsafe_b64decode(payload_b64 + pad))
+        iss = payload.get("iss")
+        return str(iss) if iss is not None else ""
+    except Exception as e:
+        raise InvalidToken(detail="malformed JWT payload") from e
 
 
 def _pick_rbac(claims: dict[str, Any], priority: list[str]) -> str | None:

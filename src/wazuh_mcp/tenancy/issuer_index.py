@@ -64,3 +64,14 @@ class IssuerIndex:
         """Return the tenant config for a known tenant_id, or None."""
 
         return self._by_tenant_id.get(tenant_id)
+
+    def known_issuers(self) -> list[str]:
+        """Return the canonicalised list of all tenant-configured issuers.
+
+        Includes ambiguous/shared issuers (those with collapsed-to-None
+        TenantConfig values). v1.0.4 OAuthSessionFactory uses this to
+        accept JWTs from any tenant-configured issuer, not just the
+        single global ``oauth.issuer`` from server.yaml.
+        """
+
+        return list(self._by_issuer.keys())
