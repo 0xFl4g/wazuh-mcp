@@ -237,20 +237,36 @@ class ServerApiClient:
         custom_args: dict[str, Any] | None = None,
         run_as: str | None = None,
     ) -> dict[str, Any]:
-        """M5b T-A2. Group-target AR.
+        """M5b T-A2 (v1.0.4 fix). Group-target AR via client-side fanout.
 
-        Wazuh 4.9 active-response endpoint accepts agents_list=group:<name>
-        as documented Wazuh syntax to fan out a command to every agent in
-        the named group. Wire shape is identical to single-target AR
-        otherwise: PUT /active-response with command in the JSON body.
+        Wazuh 4.9 does NOT accept ``agents_list=group:<name>`` on
+        ``PUT /active-response`` — the endpoint returns 400 (mapped to
+        ``invalid_query`` by the v1.0.2 nightly). The original syntax was
+        a plan-author assumption falsified by the live run.
+
+        Real flow: enumerate agents in the group via
+        ``GET /agents?group=<name>``, extract their IDs, then call the
+        existing ``run_active_response`` with the joined ID list.
+        Empty group returns a Wazuh-shaped success with empty
+        ``affected_items`` and no PUT made.
         """
-        body: dict[str, Any] = {"command": command}
-        if custom_args:
-            body.update(custom_args)
-        return await self.put(
-            "/active-response",
-            json=body,
-            params={"agents_list": f"group:{group_name}"},
+        agents_resp = await self.get(
+            "/agents",
+            params={"group": group_name, "select": "id", "limit": 500},
+            run_as=run_as,
+        )
+        affected = (agents_resp.get("data") or {}).get("affected_items") or []
+        agent_ids = [str(item["id"]) for item in affected if "id" in item]
+
+        if not agent_ids:
+            # Empty group: nothing to target. Return Wazuh-shaped success
+            # so the WriteResult builder produces ok=True, affected=[].
+            return {"data": {"affected_items": [], "failed_items": []}}
+
+        return await self.run_active_response(
+            agent_ids=agent_ids,
+            command=command,
+            custom_args=custom_args,
             run_as=run_as,
         )
 

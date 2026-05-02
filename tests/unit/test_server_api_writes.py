@@ -171,16 +171,37 @@ async def test_run_active_response_puts_with_command_and_args(client, httpx_mock
 
 
 @pytest.mark.asyncio
-async def test_run_active_response_on_group_builds_group_agents_list(client, httpx_mock) -> None:
-    """T-A2: PUT /active-response with agents_list=group:<name>.
+async def test_run_active_response_on_group_fans_out_via_agent_list(client, httpx_mock) -> None:
+    """v1.0.4 (failure B): client-side group fanout.
 
-    Wazuh 4.9 syntax for group-target AR. Distinct from agent-id list
-    (which is comma-joined) by the literal 'group:' prefix.
+    Wazuh 4.9 does NOT accept agents_list=group:<name> on
+    PUT /active-response (returns 400; v1.0.2 nightly surfaced as
+    invalid_query). Real flow:
+      1. GET /agents?group=<name>&select=id&limit=500 → enumerate IDs.
+      2. PUT /active-response?agents_list=<comma-joined IDs> → fan out.
     """
     httpx_mock.add_response(
         url=httpx.URL(
+            "https://wazuh.example:55000/agents",
+            params={
+                "group": "soc-tier1",
+                "select": "id",
+                "limit": "500",
+                "run_as": "alice",
+            },
+        ),
+        method="GET",
+        json={
+            "data": {
+                "affected_items": [{"id": "001"}, {"id": "002"}],
+                "failed_items": [],
+            }
+        },
+    )
+    httpx_mock.add_response(
+        url=httpx.URL(
             "https://wazuh.example:55000/active-response",
-            params={"agents_list": "group:soc-tier1", "run_as": "alice"},
+            params={"agents_list": "001,002", "run_as": "alice"},
         ),
         method="PUT",
         json={"data": {"affected_items": ["001", "002"], "failed_items": []}},
@@ -195,9 +216,41 @@ async def test_run_active_response_on_group_builds_group_agents_list(client, htt
     active_response_requests = [
         r for r in httpx_mock.get_requests() if r.url.path == "/active-response"
     ]
-    assert active_response_requests, "expected a PUT to /active-response"
+    assert len(active_response_requests) == 1, "expected exactly one PUT to /active-response"
     sent = active_response_requests[-1]
     assert sent.method == "PUT"
-    assert sent.url.params["agents_list"] == "group:soc-tier1"
+    assert sent.url.params["agents_list"] == "001,002"
     body = sent.read()
     assert b'"command":"restart-wazuh"' in body or b'"command": "restart-wazuh"' in body
+
+
+@pytest.mark.asyncio
+async def test_run_active_response_on_group_empty_group_skips_put(client, httpx_mock) -> None:
+    """v1.0.4 (failure B): empty group enumerates to zero agents — no PUT
+    fired, response is the empty-success shape so WriteResult is ok=True
+    with affected=[]. Defends against accidental "all agents" fallback.
+    """
+    httpx_mock.add_response(
+        url=httpx.URL(
+            "https://wazuh.example:55000/agents",
+            params={
+                "group": "ghost-group",
+                "select": "id",
+                "limit": "500",
+                "run_as": "alice",
+            },
+        ),
+        method="GET",
+        json={"data": {"affected_items": [], "failed_items": []}},
+    )
+    resp = await client.run_active_response_on_group(
+        group_name="ghost-group",
+        command="restart-wazuh",
+        custom_args=None,
+        run_as="alice",
+    )
+    assert resp == {"data": {"affected_items": [], "failed_items": []}}
+    active_response_requests = [
+        r for r in httpx_mock.get_requests() if r.url.path == "/active-response"
+    ]
+    assert active_response_requests == [], "no PUT should fire on empty group"
