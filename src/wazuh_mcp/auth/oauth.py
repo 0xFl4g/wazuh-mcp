@@ -150,10 +150,23 @@ class OAuthSessionFactory(SessionFactory):
 
         if claim_tenant is not None and iss_tenant_cfg is not None:
             if claim_tenant != iss_tenant_cfg.tenant_id:
-                raise InvalidToken(
-                    detail=f"claim tenant {claim_tenant!r} != iss tenant "
-                    f"{iss_tenant_cfg.tenant_id!r}"
-                )
+                # Cross-tenant token theft prevention: a claim_tenant that
+                # is REGISTERED under a different issuer is a forged-issuer
+                # attempt. Reject hard.
+                #
+                # An UNREGISTERED claim_tenant (not in by_tenant_id) is the
+                # M4c resolver-miss path: the issuer is trusted but the
+                # claimed tenant_id has no config. We let it through so the
+                # downstream RBAC resolver fires its KeyError + audit event
+                # (sentinel tool='<rbac.resolve>', error_reason=
+                # 'tenant_not_registered') on global sinks only — never
+                # mounting on the iss-mapped tenant's per-tenant sinks.
+                claim_tenant_cfg = self._index.get_by_tenant_id(str(claim_tenant))
+                if claim_tenant_cfg is not None:
+                    raise InvalidToken(
+                        detail=f"claim tenant {claim_tenant!r} != iss tenant "
+                        f"{iss_tenant_cfg.tenant_id!r}"
+                    )
             tenant_id = str(claim_tenant)
         elif claim_tenant is not None:
             tenant_id = str(claim_tenant)

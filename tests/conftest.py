@@ -18,6 +18,8 @@ import pytest
 def _is_arm64_darwin() -> bool:
     if os.environ.get("WAZUH_MCP_FORCE_ARM64_DARWIN") == "1":
         return True
+    if os.environ.get("WAZUH_MCP_BYPASS_REQUIRES_MANAGER") == "1":
+        return False
     return platform.system() == "Darwin" and platform.machine() == "arm64"
 
 

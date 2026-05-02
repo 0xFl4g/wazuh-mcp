@@ -89,7 +89,17 @@ async def test_valid_token_falls_back_to_iss_when_no_tenant_claim(seed_oidc, jwt
     assert session.rbac_role == "admin"
 
 
-async def test_claim_and_iss_mismatch_rejected(seed_oidc, jwt_factory, index):
+async def test_unregistered_claim_tenant_passes_to_resolver_miss(seed_oidc, jwt_factory, index):
+    """v1.0.9: a claim_tenant that is NOT registered under any issuer is
+    allowed through bearer validation. The downstream RBAC resolver fires
+    its tenant_not_registered miss-audit on global sinks (M4c
+    resolver-miss path), which is the correct defense-in-depth shape:
+    bearer trusts the issuer, RBAC owns tenant existence.
+
+    Pre-v1.0.9 this raised InvalidToken at bearer validation, which
+    suppressed the resolver-miss audit shape and produced a misleading
+    401 instead of the documented 403 forbidden.
+    """
     factory = OAuthSessionFactory(
         issuer=ISS,
         audience=AUD,
@@ -100,6 +110,44 @@ async def test_claim_and_iss_mismatch_rejected(seed_oidc, jwt_factory, index):
     try:
         token = jwt_factory.make(
             sub="alice", extra={"tenant_id": "ghost", "wazuh_mcp_role": "soc_analyst"}
+        )
+        session = await factory.build({"headers": {"Authorization": f"Bearer {token}"}})
+    finally:
+        await factory.aclose()
+    # The claim wins; downstream resolver will miss on 'ghost'.
+    assert session.tenant_id == "ghost"
+    assert session.rbac_role == "soc_analyst"
+
+
+async def test_claim_tenant_registered_under_different_issuer_rejected(
+    httpx_mock: HTTPXMock, jwt_factory: JwtFactory
+):
+    """v1.0.9: cross-tenant token theft prevention. If claim_tenant is
+    registered under a DIFFERENT issuer than iss, that's a forged-issuer
+    attempt and MUST raise InvalidToken — even though the issuer is
+    trusted in isolation.
+    """
+    other_issuer = "https://other.test"
+    index = IssuerIndex(
+        [
+            _tenant("acme"),  # mapped to ISS
+            _tenant("beta", issuer=other_issuer),  # mapped to other_issuer
+        ]
+    )
+    httpx_mock.add_response(url=DISCO, json=jwt_factory.oidc_discovery(JWKS))
+    httpx_mock.add_response(url=JWKS, json=jwt_factory.jwks())
+    factory = OAuthSessionFactory(
+        issuer=ISS,
+        audience=AUD,
+        algorithms=["RS256"],
+        rbac_claims=["wazuh_mcp_role"],
+        issuer_index=index,
+    )
+    try:
+        # Token issued by ISS but claims tenant_id='beta' which is bound
+        # to other_issuer. Reject.
+        token = jwt_factory.make(
+            sub="alice", extra={"tenant_id": "beta", "wazuh_mcp_role": "soc_analyst"}
         )
         with pytest.raises(InvalidToken):
             await factory.build({"headers": {"Authorization": f"Bearer {token}"}})
