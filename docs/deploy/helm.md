@@ -124,18 +124,20 @@ Cert-manager users add the standard `cert-manager.io/cluster-issuer` annotation 
 
 ## HA caveat
 
-**v1.0.0 ships a single-replica chart.** `replicaCount: 1` is the deliberate default. Two reasons:
+**v1.1 lifts the rate-limiter blocker.** Set `redis.enabled=true` in values.yaml to opt into multi-replica deployments with a Redis-backed shared rate budget. The remaining blocker is the **audit emitter**, which still buffers events in-memory before flushing to the indexer — operators querying `local-audit-*` will see duplicate-keyed events for sessions hitting different replicas. The audit-dedup blocker is closed in v1.2.
 
-1. **In-process rate-limiter.** wazuh-mcp's `InProcessRateLimiter` (per-tenant + per-session token buckets) is in-process state. With `replicaCount: 2+`, each replica enforces its own budget — total effective rate becomes `replicas × configured-rate`. The `RateLimiter` Protocol is in place for an external-store implementation (Redis-backed); the impl is queued for v1.1.
+Status of the two original v1.0 blockers:
 
-2. **In-process audit emitter.** `MultiSinkAuditEmitter` with `QueuedSink` wrappers buffers events in-memory before batching to indexer. Multi-replica audit fan-out works (each replica writes the events it observed) but cross-replica deduplication doesn't exist — operators querying `local-audit-*` in OpenSearch will see duplicate-keyed events for sessions that hit different replicas.
+1. **Rate-limiter** — closed in v1.1. `RedisRateLimiter` (Lua-scripted token bucket, atomic refill+consume) shares the budget fleet-wide. On Redis outage, a per-process circuit breaker routes calls to a per-replica `InProcessRateLimiter` fallback, degrading to v1.0 behavior until Redis recovers. See [`docs/deploy/redis.md`](redis.md) for sizing, URL syntax, and observability.
 
-Workarounds for v1.0.0 production:
+2. **Audit emitter** — still open. `MultiSinkAuditEmitter` with `QueuedSink` wrappers buffers events in-memory; cross-replica dedup doesn't exist. Multi-replica audit fan-out works (each replica writes the events it observed) but querying `local-audit-*` in OpenSearch returns duplicates for sessions that hit different replicas.
 
-- **Run with `replicaCount: 1`.** Use Kubernetes-native readiness gating + restart-on-failure for resilience. Leverage Service-level retries on the client side (Claude Code's MCP client) for transient pod restarts.
-- **Defer multi-replica deployment to v1.1** when the external rate-limiter ships.
+Operator paths:
 
-If your deployment scenario absolutely requires multi-replica today, contact the maintainers — there is no supported configuration for it in v1.0.0.
+- **Maximum HA today:** set `redis.enabled=true` and `replicaCount: 2+`. Tolerate the audit duplication or query past it (e.g., dedup at query-time on `session_id` + tool-call sequence number). Wait for v1.2 if you need clean audit indices.
+- **Audit-quality first:** keep `replicaCount: 1`. Use Kubernetes-native readiness gating + restart-on-failure for resilience. Leverage Service-level retries on the client side for transient pod restarts.
+
+The chart's default `replicaCount: 1` reflects the conservative path. The default will bump to ≥ 2 in v1.2 once the audit-dedup blocker closes.
 
 ## Image
 

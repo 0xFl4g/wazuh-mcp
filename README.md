@@ -133,6 +133,7 @@ Integration tests (docker compose required):
 - **M4c (v0.6.0-m4c)** — per-tenant policy resolution (closes the multi-tenant policy-bleed gap), `write.restart_manager` + `cluster.status` (rule-activation flow inside MCP), multi-agent `run_active_response` (`agent_ids: list[str]`), `confirm_required` cleanup. See `docs/deploy/m4c-multi-tenant.md`.
 - **M4d (v0.7.0-m4d)** — multi-tenant runtime isolation completion: per-tenant rate-limit budgets (closes cross-tenant DOS), per-tenant audit-sink fan-out (closes cross-tenant audit leak). No new operator-config surface. See `docs/deploy/m4d-multi-tenant-runtime.md`.
 - **M5 (planned)** — ship-gate: eval harness, Wazuh LTS matrix CI, cross-tenant leak suite, multi-manager integration fixture, Helm chart, full docs.
+- **v1.1** — multi-replica HA opt-in: `RedisRateLimiter` shares the rate budget across replicas via Lua-scripted token buckets; per-process circuit breaker falls back to v1.0 in-process behavior on Redis outage. See [`docs/deploy/redis.md`](docs/deploy/redis.md).
 
 See `docs/superpowers/specs/` for full specs per milestone.
 
@@ -150,6 +151,7 @@ Topic-organized deploy guides:
 - [Observability](docs/deploy/observability.md) — OTel, Prometheus, audit emitter + sinks, `WazuhError.scope`.
 - [Quality gates](docs/deploy/quality-gates.md) — eval harness, security CI, multi-manager workflow.
 - [Helm chart](docs/deploy/helm.md) — Kubernetes deployment with bring-your-own Secret.
+- [Redis rate limiter](docs/deploy/redis.md) — opt-in v1.1 backend for multi-replica deployments.
 - [API reference](docs/api-reference.md) — comprehensive per-tool args/result/RBAC/audit reference.
 
 The pre-v1.0.0 per-milestone deploy notes are preserved at [`docs/deploy/_archive/`](docs/deploy/_archive/) for git-history archeology.
