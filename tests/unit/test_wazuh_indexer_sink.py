@@ -51,3 +51,29 @@ async def test_index_template_installed_once() -> None:
     await sink.stop()
     # Template install is idempotent and fires at most once per sink lifetime.
     assert pool.client.put_index_template.call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_template_index_patterns_use_configured_prefix() -> None:
+    """T-G5b regression test.
+
+    Previously the module-level ``_INDEX_TEMPLATE_BODY`` constant pinned
+    ``index_patterns=["wazuh-mcp-audit-*"]``, which never matched per-tenant
+    prefixes like ``tenant-b-audit-*``. The template body is now constructed
+    inside ``_ensure_template`` so it closes over ``self._prefix``.
+    """
+    pool = _FakePool()
+    sink = WazuhIndexerSink(pool=pool, tenant_id="tenant_b", index_prefix="tenant-b-audit")
+    await sink._ensure_template()
+
+    pool.client.put_index_template.assert_awaited_once()
+    call = pool.client.put_index_template.await_args
+    assert call.kwargs["name"] == "tenant-b-audit-template"
+    body = call.kwargs["body"]
+    assert body["index_patterns"] == ["tenant-b-audit-*"], (
+        f"template index_patterns must close over self._prefix; got {body['index_patterns']!r}"
+    )
+    # Mapping shape preserved across the refactor.
+    props = body["template"]["mappings"]["properties"]
+    for required in ("timestamp", "tool", "tenant", "outcome"):
+        assert required in props, f"missing mapping property {required!r}"

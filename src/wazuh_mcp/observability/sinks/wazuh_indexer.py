@@ -15,35 +15,13 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 from datetime import UTC, datetime
 from typing import Any
 
 from wazuh_mcp.observability.sinks.base import QueuedSink
 
-_INDEX_TEMPLATE_BODY: dict[str, Any] = {
-    "index_patterns": ["wazuh-mcp-audit-*"],
-    "template": {
-        "settings": {
-            "number_of_shards": 1,
-            "number_of_replicas": 0,
-        },
-        "mappings": {
-            "dynamic": False,
-            "properties": {
-                "timestamp": {"type": "date"},
-                "tool": {"type": "keyword"},
-                "user": {"type": "keyword"},
-                "tenant": {"type": "keyword"},
-                "rbac_role": {"type": "keyword"},
-                "arg_hash": {"type": "keyword"},
-                "outcome": {"type": "keyword"},
-                "result_count": {"type": "long"},
-                "duration_ms": {"type": "long"},
-                "error_code": {"type": "keyword"},
-            },
-        },
-    },
-}
+_logger = logging.getLogger(__name__)
 
 
 class WazuhIndexerSink(QueuedSink):
@@ -73,7 +51,31 @@ class WazuhIndexerSink(QueuedSink):
         if self._template_installed:
             return
         client = await self._pool.acquire(self._tenant_id)
-        await client.put_index_template(name=f"{self._prefix}-template", body=_INDEX_TEMPLATE_BODY)
+        body: dict[str, Any] = {
+            "index_patterns": [f"{self._prefix}-*"],
+            "template": {
+                "settings": {
+                    "number_of_shards": 1,
+                    "number_of_replicas": 0,
+                },
+                "mappings": {
+                    "dynamic": False,
+                    "properties": {
+                        "timestamp": {"type": "date"},
+                        "tool": {"type": "keyword"},
+                        "user": {"type": "keyword"},
+                        "tenant": {"type": "keyword"},
+                        "rbac_role": {"type": "keyword"},
+                        "arg_hash": {"type": "keyword"},
+                        "outcome": {"type": "keyword"},
+                        "result_count": {"type": "long"},
+                        "duration_ms": {"type": "long"},
+                        "error_code": {"type": "keyword"},
+                    },
+                },
+            },
+        }
+        await client.put_index_template(name=f"{self._prefix}-template", body=body)
         self._template_installed = True
 
     def _today_index(self) -> str:
@@ -112,6 +114,7 @@ class WazuhIndexerSink(QueuedSink):
     async def _send_with_retry(self, events: list[dict[str, Any]]) -> None:
         assert self._stop is not None
         attempt = 0
+        last_exc: BaseException | None = None
         while attempt < self._max_attempts:
             try:
                 await self._ensure_template()
@@ -120,9 +123,18 @@ class WazuhIndexerSink(QueuedSink):
                 if resp.get("errors"):
                     raise RuntimeError(f"bulk reported errors: {resp}")
                 return
-            except Exception:
+            except Exception as exc:
+                last_exc = exc
                 attempt += 1
                 if attempt >= self._max_attempts:
+                    _logger.warning(
+                        "WazuhIndexerSink delivery failed after %d attempts "
+                        "(tenant=%s, batch_size=%d, last_exc=%r)",
+                        self._max_attempts,
+                        self._tenant_id,
+                        len(events),
+                        last_exc,
+                    )
                     for ev in events:
                         self._safe_record_drop(ev, "delivery_failed")
                     return
