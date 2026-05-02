@@ -9,7 +9,8 @@ from __future__ import annotations
 import asyncio
 
 import pytest
-from wazuh_mcp.rate_limit.redis_limiter import (  # ty: ignore  (until T-B2)
+
+from wazuh_mcp.rate_limit.redis_limiter import (
     BreakerState,
     CircuitBreakerOpenError,
     _RedisCircuitBreaker,
@@ -50,7 +51,7 @@ class _Counter:
 
 @pytest.mark.asyncio
 async def test_closed_passes_call_through() -> None:
-    breaker = _RedisCircuitBreaker(**_bcfg())  # ty: ignore
+    breaker = _RedisCircuitBreaker(**_bcfg())
     counter = _Counter()
     assert await breaker.call(counter) == 42
     assert counter.calls == 1
@@ -59,7 +60,7 @@ async def test_closed_passes_call_through() -> None:
 
 @pytest.mark.asyncio
 async def test_closed_to_open_after_threshold_consecutive_failures() -> None:
-    breaker = _RedisCircuitBreaker(**_bcfg(error_threshold=3))  # ty: ignore
+    breaker = _RedisCircuitBreaker(**_bcfg(error_threshold=3))
     counter = _Counter()
     counter.should_fail = True
     for _ in range(3):
@@ -70,7 +71,7 @@ async def test_closed_to_open_after_threshold_consecutive_failures() -> None:
 
 @pytest.mark.asyncio
 async def test_success_resets_failure_counter() -> None:
-    breaker = _RedisCircuitBreaker(**_bcfg(error_threshold=3))  # ty: ignore
+    breaker = _RedisCircuitBreaker(**_bcfg(error_threshold=3))
     counter = _Counter()
     counter.should_fail = True
     for _ in range(2):
@@ -87,7 +88,7 @@ async def test_success_resets_failure_counter() -> None:
 
 @pytest.mark.asyncio
 async def test_open_raises_circuit_open_without_calling() -> None:
-    breaker = _RedisCircuitBreaker(**_bcfg(error_threshold=2))  # ty: ignore
+    breaker = _RedisCircuitBreaker(**_bcfg(error_threshold=2))
     counter = _Counter()
     counter.should_fail = True
     for _ in range(2):
@@ -103,7 +104,7 @@ async def test_open_raises_circuit_open_without_calling() -> None:
 
 @pytest.mark.asyncio
 async def test_open_to_half_open_after_open_duration() -> None:
-    breaker = _RedisCircuitBreaker(**_bcfg(error_threshold=2, open_duration_sec=0.05))  # ty: ignore
+    breaker = _RedisCircuitBreaker(**_bcfg(error_threshold=2, open_duration_sec=0.05))
     counter = _Counter()
     counter.should_fail = True
     for _ in range(2):
@@ -118,7 +119,7 @@ async def test_open_to_half_open_after_open_duration() -> None:
 
 @pytest.mark.asyncio
 async def test_half_open_failure_reopens_breaker() -> None:
-    breaker = _RedisCircuitBreaker(**_bcfg(error_threshold=2, open_duration_sec=0.05))  # ty: ignore
+    breaker = _RedisCircuitBreaker(**_bcfg(error_threshold=2, open_duration_sec=0.05))
     counter = _Counter()
     counter.should_fail = True
     for _ in range(2):
@@ -132,7 +133,7 @@ async def test_half_open_failure_reopens_breaker() -> None:
 
 @pytest.mark.asyncio
 async def test_call_timeout_counts_as_failure() -> None:
-    breaker = _RedisCircuitBreaker(**_bcfg(error_threshold=2, call_timeout_ms=20))  # ty: ignore
+    breaker = _RedisCircuitBreaker(**_bcfg(error_threshold=2, call_timeout_ms=20))
     counter = _Counter()
     counter.should_hang = True
     for _ in range(2):
@@ -143,7 +144,7 @@ async def test_call_timeout_counts_as_failure() -> None:
 
 @pytest.mark.asyncio
 async def test_concurrent_calls_under_closed_state() -> None:
-    breaker = _RedisCircuitBreaker(**_bcfg())  # ty: ignore
+    breaker = _RedisCircuitBreaker(**_bcfg())
     counter = _Counter()
     results = await asyncio.gather(*(breaker.call(counter) for _ in range(10)))
     assert results == [42] * 10
@@ -153,7 +154,7 @@ async def test_concurrent_calls_under_closed_state() -> None:
 
 @pytest.mark.asyncio
 async def test_state_transitions_recorded_for_observability() -> None:
-    breaker = _RedisCircuitBreaker(**_bcfg(error_threshold=2))  # ty: ignore
+    breaker = _RedisCircuitBreaker(**_bcfg(error_threshold=2))
     counter = _Counter()
     counter.should_fail = True
     for _ in range(2):
