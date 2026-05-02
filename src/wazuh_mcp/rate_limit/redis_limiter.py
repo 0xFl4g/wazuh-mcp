@@ -11,12 +11,24 @@ from __future__ import annotations
 import asyncio
 import enum
 import logging
+import math
 import time
 from collections.abc import Awaitable, Callable
+from pathlib import Path
 from typing import TypeVar
+
+from redis.asyncio import Redis as AsyncRedis
+from redis.exceptions import ConnectionError as RedisConnectionError
+from redis.exceptions import NoScriptError
+from redis.exceptions import TimeoutError as RedisTimeoutError
+
+from wazuh_mcp.rate_limit.limiter import InProcessRateLimiter
+from wazuh_mcp.tenancy.m4_config import BucketConfig, RateLimitConfig
+from wazuh_mcp.wazuh.errors import WazuhError
 
 T = TypeVar("T")
 _LOG = logging.getLogger(__name__)
+_LUA_PATH = Path(__file__).parent / "lua" / "token_bucket.lua"
 
 
 class BreakerState(enum.IntEnum):
@@ -142,3 +154,146 @@ class _RedisCircuitBreaker:
             # _opened_at so the cooling period restarts from the latest signal
             # rather than the first one.
             self._opened_at = self._now()
+
+
+def _ttl_for(cfg: RateLimitConfig) -> int:
+    """TTL seconds = max(2 * full_refill_window, 60).
+
+    full_refill_window = capacity / refill_per_sec. Use the longer of
+    tenant and session refill windows so both buckets get a survivable TTL.
+    """
+    windows = [
+        cfg.tenant.capacity / cfg.tenant.refill_per_sec,
+        cfg.session.capacity / cfg.session.refill_per_sec,
+    ]
+    return max(math.ceil(2 * max(windows)), 60)
+
+
+class RedisRateLimiter:
+    """Two-tier token-bucket limiter backed by Redis with breaker fallback.
+
+    Implements the RateLimiter Protocol. acquire() runs the Lua script
+    against tenant + session bucket keys; raises WazuhError(rate_limited)
+    on budget exhaustion (same behavior as InProcessRateLimiter).
+
+    On Redis call failure (timeout, ConnectionError, server error), the
+    circuit breaker counts the failure and routes the call to a
+    per-process InProcessRateLimiter fallback that is lazy-constructed
+    on first OPEN transition and kept warm.
+    """
+
+    def __init__(
+        self,
+        *,
+        redis_client: AsyncRedis,
+        default: RateLimitConfig,
+        per_tenant: dict[str, RateLimitConfig] | None = None,
+        key_prefix: str,
+        breaker: _RedisCircuitBreaker,
+        now_ms: Callable[[], int] | None = None,
+    ) -> None:
+        self._redis = redis_client
+        self._default = default
+        self._per_tenant = per_tenant or {}
+        self._key_prefix = key_prefix
+        self._breaker = breaker
+        self._now_ms = now_ms or (lambda: int(time.time() * 1000))
+        self._script_text = _LUA_PATH.read_text(encoding="utf-8")
+        self._script_sha: str | None = None
+        self._fallback: InProcessRateLimiter | None = None
+
+    def _cfg(self, tenant_id: str) -> RateLimitConfig:
+        return self._per_tenant.get(tenant_id, self._default)
+
+    def _tenant_key(self, tenant_id: str) -> str:
+        return f"{self._key_prefix}:tenant:{tenant_id}"
+
+    def _session_key(self, tenant_id: str, session_id: str) -> str:
+        return f"{self._key_prefix}:session:{tenant_id}:{session_id}"
+
+    def _ensure_fallback(self) -> InProcessRateLimiter:
+        if self._fallback is None:
+            self._fallback = InProcessRateLimiter(
+                default=self._default,
+                per_tenant=self._per_tenant,
+            )
+        return self._fallback
+
+    async def _load_script(self) -> str:
+        # redis-py stubs annotate script_load as returning Awaitable[str] | str
+        sha = await self._redis.script_load(self._script_text)
+        self._script_sha = sha
+        return sha
+
+    async def _evalsha(
+        self, sha: str, key: str, capacity: int, refill: float, n: int, ttl: int
+    ) -> int:
+        # redis-py stubs return Awaitable[str] | str; evalsha args are str on the wire
+        result = await self._redis.evalsha(  # ty:ignore[invalid-await]
+            sha, 1, key, str(capacity), str(refill), str(self._now_ms()), str(n), str(ttl)
+        )
+        return int(result)
+
+    async def _run_script(self, key: str, capacity: int, refill: float, n: int, ttl: int) -> int:
+        sha = self._script_sha if self._script_sha is not None else await self._load_script()
+        try:
+            return await self._evalsha(sha, key, capacity, refill, n, ttl)
+        except NoScriptError:
+            sha = await self._load_script()
+            return await self._evalsha(sha, key, capacity, refill, n, ttl)
+
+    async def _try_redis_acquire(self, key: str, cfg_bucket: BucketConfig, ttl: int) -> bool:
+        result = await self._run_script(
+            key=key,
+            capacity=cfg_bucket.capacity,
+            refill=cfg_bucket.refill_per_sec,
+            n=1,
+            ttl=ttl,
+        )
+        return result == 1
+
+    async def acquire(self, tenant_id: str, session_id: str) -> None:
+        cfg = self._cfg(tenant_id)
+        ttl = _ttl_for(cfg)
+        tenant_key = self._tenant_key(tenant_id)
+        session_key = self._session_key(tenant_id, session_id)
+
+        try:
+            granted = await self._breaker.call(
+                lambda: self._try_redis_acquire(tenant_key, cfg.tenant, ttl)
+            )
+        except CircuitBreakerOpenError:
+            await self._ensure_fallback().acquire(tenant_id, session_id)
+            return
+        except (RedisConnectionError, RedisTimeoutError, TimeoutError):
+            _LOG.debug("rate_limit_redis_call_failed", exc_info=True)
+            await self._ensure_fallback().acquire(tenant_id, session_id)
+            return
+
+        if not granted:
+            raise WazuhError(
+                "rate_limited",
+                "tenant rate limit exceeded",
+                429,
+                scope="rate_limit:tenant",
+            )
+
+        try:
+            granted = await self._breaker.call(
+                lambda: self._try_redis_acquire(session_key, cfg.session, ttl)
+            )
+        except CircuitBreakerOpenError:
+            await self._ensure_fallback().acquire(tenant_id, session_id)
+            return
+        except (RedisConnectionError, RedisTimeoutError, TimeoutError):
+            _LOG.debug("rate_limit_redis_call_failed", exc_info=True)
+            await self._ensure_fallback().acquire(tenant_id, session_id)
+            return
+
+        if not granted:
+            raise WazuhError(
+                "rate_limited",
+                "session rate limit exceeded",
+                429,
+                scope="rate_limit:session",
+            )
