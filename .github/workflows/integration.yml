@@ -19,10 +19,6 @@ jobs:
         wazuh_version:
           - "4.9.0"
           - "4.14.5"
-    if: |
-      github.event_name == 'schedule' ||
-      github.event_name == 'workflow_dispatch' ||
-      matrix.wazuh_version == '4.9.0'
     env:
       WAZUH_VERSION: ${{ matrix.wazuh_version }}
     steps:
