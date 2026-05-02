@@ -54,6 +54,22 @@ secrets:
       server_api_user: wazuh-wui
       server_api_password: changeme
 
+# v1.1 — opt-in Redis-backed rate limiter for multi-replica deployments.
+#
+# When enabled, WAZUH_MCP_REDIS_URL is injected as an env var from the
+# user-provided existingSecret (key: redis-url). The operator must ALSO
+# include a `rate_limiter: { backend: "redis", ... }` block in their
+# server.yaml value above to actually use the redis backend.
+#
+# Note: replicaCount > 1 is supported with redis.enabled=true, but
+# operators querying local-audit-* will see duplicate-keyed events from
+# sessions hitting different replicas. The audit-dedup blocker is closed
+# in v1.2; until then, the chart's replicaCount default stays at 1.
+redis:
+  enabled: false
+  # K8s Secret with key 'redis-url' (e.g. redis://default:hunter2@redis.svc:6379/0).
+  existingSecret: ""
+
 probes:
   readiness:
     path: /readyz

@@ -35,6 +35,13 @@ spec:
             # See src/wazuh_mcp/__main__.py.
             - name: WAZUH_MCP_CONFIG_DIR
               value: /config
+            {{- if .Values.redis.enabled }}
+            - name: WAZUH_MCP_REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ required "redis.existingSecret is required when redis.enabled" .Values.redis.existingSecret }}
+                  key: redis-url
+            {{- end }}
           volumeMounts:
             - name: config
               mountPath: /config
