@@ -6,7 +6,7 @@
       "tier": "selection_only",
       "id": "triage_alerts_recent_high",
       "picked_tool": "alerts.search_alerts",
-      "picked_args": {"query": "rule.level >= 12", "time_range": "1h"}
+      "picked_args": {"min_level": 12, "time_range": "1h"}
     },
     {
       "tier": "selection_only",
@@ -18,7 +18,7 @@
       "tier": "selection_only",
       "id": "triage_alerts_for_agent",
       "picked_tool": "alerts.alerts_by_agent",
-      "picked_args": {"agent_id": "002", "time_range": "1d"}
+      "picked_args": {"agent_id": "002", "time_range": "24h"}
     },
     {
       "tier": "selection_only",
@@ -36,37 +36,37 @@
       "tier": "selection_only",
       "id": "hunt_failed_logins",
       "picked_tool": "hunt.hunt_query",
-      "picked_args": {"query": "failed login", "agent_id": "001", "time_range": "6h"}
+      "picked_args": {"time_range": "6h", "must": [{"field": "agent.id", "op": "eq", "value": "001"}, {"field": "rule.description", "op": "prefix", "value": "failed login"}], "must_not": []}
     },
     {
       "tier": "selection_only",
       "id": "hunt_pivot_by_ioc_hash",
       "picked_tool": "hunt.pivot_by_ioc",
-      "picked_args": {"ioc_type": "sha256", "value": "abcdef0123456789"}
+      "picked_args": {"kind": "hash", "value": "abcdef0123456789"}
     },
     {
       "tier": "selection_only",
       "id": "hunt_powershell_invocations",
       "picked_tool": "hunt.hunt_query",
-      "picked_args": {"query": "powershell", "time_range": "7d"}
+      "picked_args": {"time_range": "7d", "must": [{"field": "data.command", "op": "prefix", "value": "powershell"}], "must_not": []}
     },
     {
       "tier": "selection_only",
       "id": "hunt_pivot_by_ip",
       "picked_tool": "hunt.pivot_by_ioc",
-      "picked_args": {"ioc_type": "ip", "value": "10.0.0.42"}
+      "picked_args": {"kind": "ip", "value": "10.0.0.42"}
     },
     {
       "tier": "selection_only",
       "id": "hunt_dns_queries",
       "picked_tool": "hunt.hunt_query",
-      "picked_args": {"query": "suspicious-domain.example"}
+      "picked_args": {"time_range": "24h", "must": [{"field": "data.dns.question.name", "op": "eq", "value": "suspicious-domain.example"}], "must_not": []}
     },
     {
       "tier": "selection_only",
       "id": "write_isolate_one_agent",
       "picked_tool": "write.isolate_agent",
-      "picked_args": {"agent_id": "001", "confirm": true}
+      "picked_args": {"agent_ids": ["001"], "confirm": true}
     },
     {
       "tier": "selection_only",
@@ -78,13 +78,13 @@
       "tier": "selection_only",
       "id": "write_add_to_group",
       "picked_tool": "write.add_agent_to_group",
-      "picked_args": {"agent_id": "002", "group": "soc-monitored", "confirm": true}
+      "picked_args": {"agent_id": "002", "group_id": "soc-monitored", "confirm": true}
     },
     {
       "tier": "selection_only",
       "id": "write_create_rule",
       "picked_tool": "write.create_rule",
-      "picked_args": {"rule_id": 100200, "level": 7, "description": "invalid SSH user", "confirm": true}
+      "picked_args": {"rule": {"id": 100200, "level": 7, "description": "invalid SSH user"}, "confirm": true}
     },
     {
       "tier": "selection_only",
@@ -174,7 +174,7 @@
       "tier": "selection_only",
       "id": "vuln_search_critical",
       "picked_tool": "vulnerabilities.search_vulnerabilities",
-      "picked_args": {"severity": "Critical"}
+      "picked_args": {"min_severity": "Critical"}
     },
     {
       "tier": "selection_only",
@@ -186,7 +186,7 @@
       "tier": "with_args",
       "id": "with_args_isolate_with_confirm",
       "picked_tool": "write.isolate_agent",
-      "picked_args": {"agent_id": "001", "confirm": true}
+      "picked_args": {"agent_ids": ["001"], "confirm": true}
     },
     {
       "tier": "with_args",
@@ -204,7 +204,7 @@
       "tier": "with_args",
       "id": "with_args_add_to_group",
       "picked_tool": "write.add_agent_to_group",
-      "picked_args": {"agent_id": "002", "group": "soc-monitored", "confirm": true}
+      "picked_args": {"agent_id": "002", "group_id": "soc-monitored", "confirm": true}
     },
     {
       "tier": "with_args",
@@ -222,19 +222,19 @@
       "tier": "with_args",
       "id": "with_args_hunt_size_limit",
       "picked_tool": "hunt.hunt_query",
-      "picked_args": {"query": "failed login", "limit": 50}
+      "picked_args": {"time_range": "1h", "must": [{"field": "rule.description", "op": "prefix", "value": "failed login"}], "must_not": [], "size": 50}
     },
     {
       "tier": "with_args",
       "id": "with_args_alerts_by_agent_specific",
       "picked_tool": "alerts.alerts_by_agent",
-      "picked_args": {"agent_id": "005", "time_range": "1h", "limit": 10}
+      "picked_args": {"agent_id": "005", "time_range": "1h", "size": 10}
     },
     {
       "tier": "with_args",
       "id": "with_args_pivot_specific_hash",
       "picked_tool": "hunt.pivot_by_ioc",
-      "picked_args": {"ioc_type": "sha256", "value": "deadbeefcafebabe"}
+      "picked_args": {"kind": "hash", "value": "deadbeefcafebabe"}
     },
     {
       "tier": "with_args",
@@ -256,22 +256,22 @@
       "id": "triage_alert_then_pivot",
       "picked_sequence": [
         {"tool": "alerts.get_alert", "args": {"alert_id": "ABCD-1234"}},
-        {"tool": "hunt.pivot_by_ioc", "args": {"ioc_type": "ip", "value": "10.0.0.42"}}
+        {"tool": "hunt.pivot_by_ioc", "args": {"kind": "ip", "value": "10.0.0.42"}}
       ]
     },
     {
       "tier": "multi_step",
       "id": "agent_compromise_isolate",
       "picked_sequence": [
-        {"tool": "alerts.alerts_by_agent", "args": {"agent_id": "001", "query": "powershell"}},
-        {"tool": "write.isolate_agent", "args": {"agent_id": "001", "confirm": true}}
+        {"tool": "alerts.alerts_by_agent", "args": {"agent_id": "001"}},
+        {"tool": "write.isolate_agent", "args": {"agent_ids": ["001"], "confirm": true}}
       ]
     },
     {
       "tier": "multi_step",
       "id": "hunt_then_inspect_agent",
       "picked_sequence": [
-        {"tool": "hunt.hunt_query", "args": {"query": "failed login", "time_range": "1h"}},
+        {"tool": "hunt.hunt_query", "args": {"time_range": "1h", "must": [{"field": "rule.description", "op": "prefix", "value": "failed login"}], "must_not": []}},
         {"tool": "agents.agent_ports", "args": {"agent_id": "002"}}
       ]
     },
@@ -279,7 +279,7 @@
       "tier": "multi_step",
       "id": "vuln_then_inspect_packages",
       "picked_sequence": [
-        {"tool": "vulnerabilities.search_vulnerabilities", "args": {"severity": "Critical"}},
+        {"tool": "vulnerabilities.search_vulnerabilities", "args": {"min_severity": "Critical"}},
         {"tool": "agents.agent_packages", "args": {"agent_id": "003"}}
       ]
     }

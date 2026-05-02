@@ -78,7 +78,8 @@
   prompt: "Pivot on the SHA256 hash 'deadbeefcafebabe' across all alerts."
   expected_tool: hunt.pivot_by_ioc
   expected_args:
-    ioc_value: "deadbeefcafebabe"
+    kind: "hash"
+    value: "deadbeefcafebabe"
   category: hunt
 
 # ---------- mitre (1) ----------

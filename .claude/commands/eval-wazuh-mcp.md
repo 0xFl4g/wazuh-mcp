@@ -48,6 +48,10 @@ After processing all 30 entries, you should have 30 records. Each record has the
 
 Read `docs/eval/corpus/with_args.yaml`. Same rule: read `id`, `prompt`, `category` ONLY. Do NOT read `expected_tool` or `expected_args`.
 
+**Schema-loading step (required for this tier).** Before recording `picked_args` for any tool, load that tool's schema via `ToolSearch` (e.g. `ToolSearch query="select:mcp__wazuh__write_isolate_agent" max_results=1`). The Claude Code deferred-tool list surfaces tool *names* only — argument names live in the JSON schema and are only visible after a ToolSearch fetch. This mirrors what a real operator's session would do (the model lazy-loads schemas on first invocation), so loading them here is fair, not cheating. Skipping this step measures convention-recall (`limit` vs `size`, `agent_id` vs `agent_ids`), not real tool-use ability.
+
+You can load multiple tool schemas in one ToolSearch call: `select:mcp__wazuh__write_isolate_agent,mcp__wazuh__hunt_hunt_query,...`.
+
 For each prompt, decide tool + args. Record:
 
 ```json
@@ -62,6 +66,8 @@ For each prompt, decide tool + args. Record:
 # Phase 1c: multi_step
 
 Read `docs/eval/corpus/multi_step.yaml`. Read `id`, `prompt`, `category` ONLY. Do NOT read `expected_sequence`.
+
+**Schema-loading rule applies here too.** As in Phase 1b, load tool schemas via `ToolSearch` before recording any `args` field on a step. Schemas you already loaded in Phase 1b are still in scope — no need to reload.
 
 For each prompt, simulate a multi-turn flow:
 

@@ -7,9 +7,9 @@
       "total": 3
     },
     "hunt": {
-      "accuracy": 0.6666666666666666,
-      "failed": 3,
-      "passed": 6,
+      "accuracy": 1.0,
+      "failed": 0,
+      "passed": 9,
       "total": 9
     },
     "inventory": {
@@ -37,17 +37,17 @@
       "total": 4
     },
     "writes": {
-      "accuracy": 0.75,
-      "failed": 3,
-      "passed": 9,
+      "accuracy": 1.0,
+      "failed": 0,
+      "passed": 12,
       "total": 12
     }
   },
   "by_tier": {
     "multi_step": {
-      "accuracy": 0.8,
-      "failed": 1,
-      "passed": 4,
+      "accuracy": 1.0,
+      "failed": 0,
+      "passed": 5,
       "total": 5
     },
     "selection_only": {
@@ -57,170 +57,20 @@
       "total": 30
     },
     "with_args": {
-      "accuracy": 0.5,
-      "failed": 5,
-      "passed": 5,
+      "accuracy": 1.0,
+      "failed": 0,
+      "passed": 10,
       "total": 10
     }
   },
-  "failures": [
-    {
-      "category": "writes",
-      "expected": {
-        "args": {
-          "agent_ids": [
-            "001"
-          ],
-          "confirm": true
-        },
-        "tool": "write.isolate_agent"
-      },
-      "id": "with_args_isolate_with_confirm",
-      "picked": {
-        "args": {
-          "agent_id": "001",
-          "confirm": true
-        },
-        "tool": "write.isolate_agent"
-      },
-      "tier": "with_args"
-    },
-    {
-      "category": "writes",
-      "expected": {
-        "args": {
-          "agent_id": "002",
-          "confirm": true,
-          "group_id": "soc-monitored"
-        },
-        "tool": "write.add_agent_to_group"
-      },
-      "id": "with_args_add_to_group",
-      "picked": {
-        "args": {
-          "agent_id": "002",
-          "confirm": true,
-          "group": "soc-monitored"
-        },
-        "tool": "write.add_agent_to_group"
-      },
-      "tier": "with_args"
-    },
-    {
-      "category": "hunt",
-      "expected": {
-        "args": {
-          "size": 50
-        },
-        "tool": "hunt.hunt_query"
-      },
-      "id": "with_args_hunt_size_limit",
-      "picked": {
-        "args": {
-          "limit": 50,
-          "query": "failed login"
-        },
-        "tool": "hunt.hunt_query"
-      },
-      "tier": "with_args"
-    },
-    {
-      "category": "hunt",
-      "expected": {
-        "args": {
-          "agent_id": "005",
-          "size": 10
-        },
-        "tool": "alerts.alerts_by_agent"
-      },
-      "id": "with_args_alerts_by_agent_specific",
-      "picked": {
-        "args": {
-          "agent_id": "005",
-          "limit": 10,
-          "time_range": "1h"
-        },
-        "tool": "alerts.alerts_by_agent"
-      },
-      "tier": "with_args"
-    },
-    {
-      "category": "hunt",
-      "expected": {
-        "args": {
-          "ioc_value": "deadbeefcafebabe"
-        },
-        "tool": "hunt.pivot_by_ioc"
-      },
-      "id": "with_args_pivot_specific_hash",
-      "picked": {
-        "args": {
-          "ioc_type": "sha256",
-          "value": "deadbeefcafebabe"
-        },
-        "tool": "hunt.pivot_by_ioc"
-      },
-      "tier": "with_args"
-    },
-    {
-      "category": "writes",
-      "expected": [
-        {
-          "args": {
-            "agent_id": "001"
-          },
-          "stub_result": {
-            "alerts": [],
-            "total": 0,
-            "truncated": false
-          },
-          "tool": "alerts.alerts_by_agent"
-        },
-        {
-          "args": {
-            "agent_ids": [
-              "001"
-            ],
-            "confirm": true
-          },
-          "stub_result": {
-            "affected_agents": [
-              "001"
-            ],
-            "failed_agents": [],
-            "ok": true,
-            "timestamp": "2026-04-28T00:00:00Z"
-          },
-          "tool": "write.isolate_agent"
-        }
-      ],
-      "id": "agent_compromise_isolate",
-      "picked": [
-        {
-          "args": {
-            "agent_id": "001",
-            "query": "powershell"
-          },
-          "tool": "alerts.alerts_by_agent"
-        },
-        {
-          "args": {
-            "agent_id": "001",
-            "confirm": true
-          },
-          "tool": "write.isolate_agent"
-        }
-      ],
-      "tier": "multi_step"
-    }
-  ],
+  "failures": [],
   "model": "claude-opus-4-7",
   "overall": {
-    "accuracy": 0.8666666666666667,
-    "failed": 6,
-    "passed": 39,
+    "accuracy": 1.0,
+    "failed": 0,
+    "passed": 45,
     "total": 45
   },
   "run_date": "2026-05-02",
-  "thresholds_met": false
+  "thresholds_met": true
 }
