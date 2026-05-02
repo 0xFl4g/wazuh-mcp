@@ -21,6 +21,7 @@ dependencies = [
     "opentelemetry-exporter-prometheus>=0.62b1,<1",
     "opentelemetry-instrumentation-httpx>=0.48b0,<1",
     "opentelemetry-instrumentation-starlette>=0.48b0,<1",
+    "redis>=5.0,<6",
 ]
 
 [project.scripts]
@@ -38,6 +39,7 @@ dev = [
     "opensearch-py>=2.7,<3",
     "pip-audit>=2.7,<3",
     "safety>=3.2,<4",
+    "fakeredis[lua]>=2.20,<3",
 ]
 
 [build-system]
