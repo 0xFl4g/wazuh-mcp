@@ -59,6 +59,24 @@ def m4_counters() -> dict[str, Any]:
             "audit_dropped_total",
             description="Audit events dropped, labeled by sink/reason.",
         ),
+        # v1.1 — Redis-backed rate limiter observability.
+        "rate_limit_redis_state": meter.create_gauge(
+            "rate_limit_redis_state",
+            description=(
+                "Circuit breaker state for the Redis-backed rate limiter "
+                "(0=closed, 1=half_open, 2=open). One time series per replica."
+            ),
+        ),
+        "rate_limit_redis_call_total": meter.create_counter(
+            "rate_limit_redis_call_total",
+            description="Total Redis calls from the rate limiter, labeled by outcome.",
+        ),
+        "rate_limit_fallback_total": meter.create_counter(
+            "rate_limit_fallback_total",
+            description=(
+                "Acquire calls served by the in-process fallback while the Redis backend is OPEN."
+            ),
+        ),
     }
 
 
