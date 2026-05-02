@@ -38,6 +38,15 @@ services:
     environment:
       - OPENSEARCH_JAVA_OPTS=-Xms1g -Xmx1g
       - bootstrap.memory_lock=true
+      # v1.0.5 (failure C re-fix): disable disk-watermark thresholds at
+      # indexer startup. Otherwise GH Actions runners frequently sit above
+      # the 95% flood-stage default, blocking ALL writes — including
+      # securityadmin's writes to .opendistro_security on first init.
+      # The bootstrap.sh "relax watermarks via _cluster/settings" call
+      # happens AFTER securityadmin (auth chicken-and-egg), so doing it
+      # via env var here is the only place that can take effect before
+      # the very first securityadmin attempt.
+      - cluster.routing.allocation.disk.threshold_enabled=false
     ulimits:
       memlock: { soft: -1, hard: -1 }
       nofile: { soft: 65536, hard: 65536 }

@@ -58,7 +58,13 @@ echo "[bootstrap] initialising OpenSearch security plugin..."
 sec_init_ok="no"
 for attempt in 1 2 3 4 5 6 7 8; do
     echo "[bootstrap] securityadmin.sh attempt $attempt..."
-    if docker exec "$INDEXER_CONTAINER" bash -c '
+    # v1.0.5 (failure C re-fix): capture exit code BEFORE the if-check.
+    # The previous `if cmd 2>&1; then ... else rc=$?` shape interacted
+    # badly with set -euo pipefail and produced bogus "failed (exit=0)"
+    # diagnostics on the v1.0.4 nightly. Using set +e around an explicit
+    # rc capture is unambiguous.
+    set +e
+    docker exec "$INDEXER_CONTAINER" bash -c '
         export JAVA_HOME=/usr/share/wazuh-indexer/jdk
         /usr/share/wazuh-indexer/plugins/opensearch-security/tools/securityadmin.sh \
             -cd /usr/share/wazuh-indexer/opensearch-security/ \
@@ -67,12 +73,14 @@ for attempt in 1 2 3 4 5 6 7 8; do
             -cert /usr/share/wazuh-indexer/certs/admin.pem \
             -key /usr/share/wazuh-indexer/certs/admin-key.pem \
             -h localhost
-    ' 2>&1; then
+    ' 2>&1
+    rc=$?
+    set -e
+    if [ "$rc" -eq 0 ]; then
         echo "[bootstrap] securityadmin.sh OK on attempt $attempt"
         sec_init_ok="yes"
         break
     fi
-    rc=$?
     wait_s=$((attempt * 10))
     echo "[bootstrap] securityadmin.sh attempt $attempt failed (exit=$rc), retrying in ${wait_s}s..."
     sleep "$wait_s"
@@ -191,7 +199,9 @@ if [ "${MULTI_MANAGER:-0}" = "1" ]; then
     sec_init_ok="no"
     for attempt in 1 2 3 4 5 6 7 8; do
         echo "[bootstrap] (multi-manager) cluster-2 securityadmin.sh attempt $attempt..."
-        if docker exec "$INDEXER_2_CONTAINER" bash -c '
+        # v1.0.5 (failure C re-fix): mirror cluster-1 set+e/explicit-rc shape.
+        set +e
+        docker exec "$INDEXER_2_CONTAINER" bash -c '
             export JAVA_HOME=/usr/share/wazuh-indexer/jdk
             /usr/share/wazuh-indexer/plugins/opensearch-security/tools/securityadmin.sh \
                 -cd /usr/share/wazuh-indexer/opensearch-security/ \
@@ -200,12 +210,14 @@ if [ "${MULTI_MANAGER:-0}" = "1" ]; then
                 -cert /usr/share/wazuh-indexer/certs/admin.pem \
                 -key /usr/share/wazuh-indexer/certs/admin-key.pem \
                 -h localhost
-        ' 2>&1; then
+        ' 2>&1
+        rc=$?
+        set -e
+        if [ "$rc" -eq 0 ]; then
             echo "[bootstrap] (multi-manager) cluster-2 securityadmin.sh OK on attempt $attempt"
             sec_init_ok="yes"
             break
         fi
-        rc=$?
         wait_s=$((attempt * 10))
         echo "[bootstrap] (multi-manager) cluster-2 securityadmin.sh attempt $attempt failed (exit=$rc), retrying in ${wait_s}s..."
         sleep "$wait_s"
