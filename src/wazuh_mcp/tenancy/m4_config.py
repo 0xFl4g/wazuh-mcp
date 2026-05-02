@@ -115,3 +115,33 @@ def _validate_ar_group_name(name: str) -> str:
             "must start with alphanumeric."
         )
     return name
+
+
+# ---------------------------------------------------------------------------
+# v1.1 — server-wide RateLimiter backend config (lives in server.yaml)
+# ---------------------------------------------------------------------------
+
+
+class CircuitBreakerConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    error_threshold: Annotated[int, Field(ge=1, le=100)] = 3
+    open_duration_sec: Annotated[float, Field(gt=0.0, le=300.0)] = 5.0
+    half_open_max_calls: Annotated[int, Field(ge=1, le=100)] = 1
+
+
+class RedisRateLimiterConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    key_prefix: Annotated[str, Field(min_length=1, max_length=64, pattern=r"^[a-zA-Z0-9:_-]+$")] = (
+        "wazuhmcp:rl"
+    )
+    call_timeout_ms: Annotated[int, Field(ge=1, le=10_000)] = 50
+    circuit_breaker: CircuitBreakerConfig = CircuitBreakerConfig()
+
+
+class RateLimiterConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    backend: Literal["in_process", "redis"] = "in_process"
+    redis: RedisRateLimiterConfig = RedisRateLimiterConfig()
