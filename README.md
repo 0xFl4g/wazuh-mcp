@@ -2,7 +2,7 @@
 
 Model Context Protocol server for Wazuh SIEM/XDR.
 
-**Status:** v1.0.0. Production-ready release: multi-tenant policy resolution, full read+write tool surface (18 reads + 9 writes including group-target active-response), real secret backends, RBAC + rate-limit + audit chokepoint, OTel + Prom metrics, OAuth 2.1 + API-key auth, stdio + Streamable HTTP transports, Helm chart for Kubernetes deploy, Wazuh LTS+latest matrix CI. See `docs/deploy/README.md` for the deployment guide and `docs/superpowers/specs/` for design specs per milestone.
+**Status:** v1.0.0. Production-ready release: multi-tenant policy resolution, full read+write tool surface (18 reads + 9 writes including group-target active-response), real secret backends, RBAC + rate-limit + audit chokepoint, OTel + Prom metrics, OAuth 2.1 + API-key auth, stdio + Streamable HTTP transports, Helm chart for Kubernetes deploy, Wazuh LTS+latest matrix CI. See [`docs/deploy/README.md`](docs/deploy/README.md) for the topic-organized deployment guide, [`docs/api-reference.md`](docs/api-reference.md) for the comprehensive per-tool API reference, and `docs/superpowers/specs/` for design specs per milestone.
 
 ## Tools (17)
 
@@ -47,13 +47,13 @@ Model Context Protocol server for Wazuh SIEM/XDR.
 
 **Requires Wazuh ≥ 4.8** for `vulnerabilities.*` (state lives in the indexer as of 4.8).
 
-See `docs/deploy/m3-tools.md` for the per-tool argument reference. M5b adds `write.run_active_response_on_group` — group-target AR with per-tenant `agent_group_allowlist` gate; see `docs/deploy/README.md` for the v1.0.0 surface summary.
+See [`docs/deploy/tools.md`](docs/deploy/tools.md) for the read-tool operator guide and [`docs/api-reference.md`](docs/api-reference.md) for the comprehensive per-tool API. M5b adds `write.run_active_response_on_group` — group-target AR with per-tenant `agent_group_allowlist` gate; see [`docs/deploy/writes.md`](docs/deploy/writes.md) for the full write-tool guide.
 
 ## Deploy
 
 - **stdio** — `uv run wazuh-mcp` after creating a `config/` directory (see "Configure" below).
-- **HTTP** — `uv run wazuh-mcp serve` for the Streamable HTTP transport. See `docs/deploy/m2-http.md`.
-- **Kubernetes (Helm)** — `helm install wazuh-mcp ./charts/wazuh-mcp` with bring-your-own Secret. See `docs/deploy/helm.md` for the full guide and HA caveat.
+- **HTTP** — `uv run wazuh-mcp serve` for the Streamable HTTP transport. See [`docs/deploy/install.md`](docs/deploy/install.md).
+- **Kubernetes (Helm)** — `helm install wazuh-mcp ./charts/wazuh-mcp` with bring-your-own Secret. See [`docs/deploy/helm.md`](docs/deploy/helm.md) for the full guide and HA caveat.
 
 ## Requirements
 
@@ -138,9 +138,18 @@ See `docs/superpowers/specs/` for full specs per milestone.
 
 ## Deploying
 
-- M2 baseline (uvicorn + Caddy + OAuth IdP): `docs/deploy/m2-http.md`
-- M3 tool reference: `docs/deploy/m3-tools.md`
-- M4a (secrets, observability, audit): `docs/deploy/m4a-secrets.md`, `m4a-observability.md`, `m4a-audit.md`
-- M4b (write tools): `docs/deploy/m4b-writes.md`
-- M4c (multi-tenant + new writes): `docs/deploy/m4c-multi-tenant.md`
-- M4d (per-tenant rate-limit + audit-sink fan-out): `docs/deploy/m4d-multi-tenant-runtime.md`
+Topic-organized deploy guides:
+
+- [Install + first-run](docs/deploy/install.md) — three install paths, config layout, stdio vs HTTP.
+- [TenantConfig reference](docs/deploy/tenants.md) — every per-tenant field, validator, and semantics.
+- [OAuth 2.1](docs/deploy/oauth.md) — JWKS, IssuerIndex semantics, `wazuh_user` claim mapping.
+- [Secrets](docs/deploy/secrets.md) — YAML / AWS / Vault / SQLite+age drivers + caching wrapper.
+- [Read tools](docs/deploy/tools.md) — 17 reads + `cluster.status` + 3 resources + 3 prompts.
+- [Write tools](docs/deploy/writes.md) — 9 writes, two-layer allowlist, `confirm` UX, rule-file lifecycle.
+- [Multi-tenant](docs/deploy/multi-tenant.md) — per-tenant resolvers, rate-limit, audit fan-out.
+- [Observability](docs/deploy/observability.md) — OTel, Prometheus, audit emitter + sinks, `WazuhError.scope`.
+- [Quality gates](docs/deploy/quality-gates.md) — eval harness, security CI, multi-manager workflow.
+- [Helm chart](docs/deploy/helm.md) — Kubernetes deployment with bring-your-own Secret.
+- [API reference](docs/api-reference.md) — comprehensive per-tool args/result/RBAC/audit reference.
+
+The pre-v1.0.0 per-milestone deploy notes are preserved at [`docs/deploy/_archive/`](docs/deploy/_archive/) for git-history archeology.
