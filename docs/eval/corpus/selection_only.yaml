@@ -53,7 +53,7 @@
   category: hunt
 
 - id: hunt_dns_queries
-  prompt: "Search the alerts index for DNS queries to suspicious-domain.example."
+  prompt: "Search the alerts index for any DNS query events from the last hour."
   expected_tool: hunt.hunt_query
   category: hunt
 
@@ -142,7 +142,7 @@
   category: fim
 
 - id: fim_recent_changes_root
-  prompt: "List recent FIM changes under /root on agent 003."
+  prompt: "List recent FIM changes reported by agent 003 in the last 24 hours."
   expected_tool: fim.fim_changes_by_agent
   category: fim
 

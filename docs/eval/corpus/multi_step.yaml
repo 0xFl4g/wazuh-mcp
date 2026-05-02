@@ -48,7 +48,7 @@
   category: triage
 
 - id: agent_compromise_isolate
-  prompt: "Agent 001 is showing PowerShell anomalies. Isolate it."
+  prompt: "Agent 001 is showing PowerShell anomalies. List the recent alerts on agent 001 to confirm, then isolate it."
   expected_sequence:
     - tool: alerts.alerts_by_agent
       args: {agent_id: "001"}
