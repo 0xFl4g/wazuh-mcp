@@ -2476,7 +2476,7 @@ wheels = [
 
 [[package]]
 name = "wazuh-mcp"
-version = "1.0.3"
+version = "1.0.4"
 source = { editable = "." }
 dependencies = [
     { name = "aioboto3" },
