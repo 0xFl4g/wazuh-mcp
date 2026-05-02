@@ -2,7 +2,7 @@
 
 Model Context Protocol server for Wazuh SIEM/XDR.
 
-**Status:** v0.6.0-m4c. Multi-tenant policy resolution, full read+write tool surface (18 reads + 8 writes), real secret backends, RBAC + rate-limit + audit chokepoint, OTel + Prom metrics, OAuth 2.1 + API-key auth, stdio + Streamable HTTP transports. See `docs/superpowers/specs/` for design specs per milestone.
+**Status:** v1.0.0. Production-ready release: multi-tenant policy resolution, full read+write tool surface (18 reads + 9 writes including group-target active-response), real secret backends, RBAC + rate-limit + audit chokepoint, OTel + Prom metrics, OAuth 2.1 + API-key auth, stdio + Streamable HTTP transports, Helm chart for Kubernetes deploy, Wazuh LTS+latest matrix CI. See `docs/deploy/README.md` for the deployment guide and `docs/superpowers/specs/` for design specs per milestone.
 
 ## Tools (17)
 
@@ -47,7 +47,13 @@ Model Context Protocol server for Wazuh SIEM/XDR.
 
 **Requires Wazuh ≥ 4.8** for `vulnerabilities.*` (state lives in the indexer as of 4.8).
 
-See `docs/deploy/m3-tools.md` for the per-tool argument reference.
+See `docs/deploy/m3-tools.md` for the per-tool argument reference. M5b adds `write.run_active_response_on_group` — group-target AR with per-tenant `agent_group_allowlist` gate; see `docs/deploy/README.md` for the v1.0.0 surface summary.
+
+## Deploy
+
+- **stdio** — `uv run wazuh-mcp` after creating a `config/` directory (see "Configure" below).
+- **HTTP** — `uv run wazuh-mcp serve` for the Streamable HTTP transport. See `docs/deploy/m2-http.md`.
+- **Kubernetes (Helm)** — `helm install wazuh-mcp ./charts/wazuh-mcp` with bring-your-own Secret. See `docs/deploy/helm.md` for the full guide and HA caveat.
 
 ## Requirements
 
