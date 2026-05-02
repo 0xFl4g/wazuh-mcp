@@ -122,8 +122,30 @@ def build_metadata_endpoint(*, resource_url: str, authorization_server: str) -> 
     return app
 
 
-async def _healthz(request: Request) -> Response:
-    return JSONResponse({"status": "ok"}, status_code=200)
+def _rate_limiter_health(limiter: object | None) -> dict[str, str]:
+    """Return a {backend, redis} status dict for the /healthz response."""
+    if limiter is None:
+        return {"backend": "none", "redis": "disabled"}
+    # Lazy import to avoid pulling redis-py into modules that don't use it.
+    from wazuh_mcp.rate_limit.redis_limiter import BreakerState, RedisRateLimiter
+
+    if isinstance(limiter, RedisRateLimiter):
+        state = limiter._breaker.state  # deliberate access to breaker state
+        if state == BreakerState.CLOSED:
+            return {"backend": "redis", "redis": "ok"}
+        return {"backend": "redis", "redis": "degraded"}
+    return {"backend": "in_process", "redis": "disabled"}
+
+
+def _make_healthz_handler(
+    limiter: object | None = None,
+) -> Callable[[Request], Awaitable[Response]]:
+    async def _healthz(request: Request) -> Response:
+        body: dict[str, object] = {"status": "ok"}
+        body["rate_limiter"] = _rate_limiter_health(limiter)
+        return JSONResponse(body, status_code=200)
+
+    return _healthz
 
 
 def build_health_endpoints(*, ready_fn: Callable[[], bool]) -> Starlette:
@@ -134,7 +156,7 @@ def build_health_endpoints(*, ready_fn: Callable[[], bool]) -> Starlette:
 
     return Starlette(
         routes=[
-            Route("/healthz", _healthz, methods=["GET"]),
+            Route("/healthz", _make_healthz_handler(), methods=["GET"]),
             Route("/readyz", _readyz, methods=["GET"]),
         ]
     )
@@ -148,6 +170,7 @@ def build_asgi_app(
     authorization_server: str,
     ready_fn: Callable[[], bool],
     audit_emitter: MultiSinkAuditEmitter | None = None,
+    limiter: object | None = None,
 ) -> Any:
     """Compose the full ASGI app: metadata + health + /metrics + session-protected MCP mount.
 
@@ -200,7 +223,7 @@ def build_asgi_app(
                 handler,
                 methods=["GET"],
             ),
-            Route("/healthz", _healthz, methods=["GET"]),
+            Route("/healthz", _make_healthz_handler(limiter=limiter), methods=["GET"]),
             Route("/readyz", _readyz, methods=["GET"]),
             build_metrics_route(),
             Mount("/", app=mcp_streamable),

@@ -578,6 +578,7 @@ def build_http_app(http_cfg: HttpAppConfig, audit: MultiSinkAuditEmitter | None 
         authorization_server=http_cfg.authorization_server,
         ready_fn=ready_fn,
         audit_emitter=audit_emitter,
+        limiter=limiter,
     )
 
     ready[0] = True
