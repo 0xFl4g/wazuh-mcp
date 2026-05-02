@@ -1,0 +1,38 @@
+name: helm-lint
+
+on:
+  pull_request:
+    paths:
+      - "charts/**"
+  push:
+    branches: [main]
+    paths:
+      - "charts/**"
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.16.0
+
+      - name: helm lint
+        run: helm lint charts/wazuh-mcp
+
+      - name: helm template (defaults)
+        run: helm template charts/wazuh-mcp > /tmp/render.yaml
+
+      - name: helm template (all opt-ins enabled)
+        run: |
+          helm template charts/wazuh-mcp \
+            --set secrets.create=true \
+            --set networkPolicy.enabled=true \
+            --set serviceMonitor.enabled=true \
+            --set ingress.enabled=true,ingress.host=mcp.example.com \
+            > /tmp/render-full.yaml
+          echo "Rendered kinds:"
+          grep -c "^kind:" /tmp/render-full.yaml

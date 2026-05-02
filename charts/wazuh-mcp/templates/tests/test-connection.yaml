@@ -1,0 +1,23 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: "{{ include "wazuh-mcp.fullname" . }}-test-connection"
+  labels:
+    {{- include "wazuh-mcp.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": test
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  restartPolicy: Never
+  containers:
+    - name: smoke
+      image: curlimages/curl:8.10.1
+      command:
+        - sh
+        - -c
+        - |
+          set -e
+          echo "GET /readyz"
+          curl -fsS --max-time 10 http://{{ include "wazuh-mcp.fullname" . }}:{{ .Values.service.port }}/readyz
+          echo ""
+          echo "smoke OK"
