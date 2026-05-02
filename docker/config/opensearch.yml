@@ -57,3 +57,16 @@ plugins.security.system_indices.indices:
   - ".replication-metadata-store"
 
 compatibility.override_main_response_version: true
+
+# v1.0.8 (failure C real fix): disable the disk-watermark threshold
+# entirely for the integration fixture. GH Actions runners frequently
+# sit above OpenSearch's default 90% high-watermark threshold, which
+# triggers an "index create block" cluster-wide — blocking
+# .opendistro_security creation on first securityadmin run, which
+# silently fails with "Not yet initialized". The previous
+# bootstrap.sh post-securityadmin _cluster/settings PUT to relax
+# watermarks happens AFTER auth, which is itself blocked. Setting the
+# threshold disabled in opensearch.yml takes effect at indexer
+# startup, no auth required.
+# Test-fixture only; production deployments MUST keep watermarks on.
+cluster.routing.allocation.disk.threshold_enabled: false
