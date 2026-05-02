@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import importlib.metadata
 import logging
+import os
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -41,6 +42,7 @@ from wazuh_mcp.rbac.filter import is_allowed
 from wazuh_mcp.secrets.yaml_driver import YamlSecretStore
 from wazuh_mcp.tenancy.config import TenantConfig
 from wazuh_mcp.tenancy.issuer_index import IssuerIndex
+from wazuh_mcp.tenancy.m4_config import RateLimitConfig, RateLimiterConfig
 from wazuh_mcp.tenancy.registry import TenantRegistry, YamlTenantRegistry
 from wazuh_mcp.transport.http import build_asgi_app
 from wazuh_mcp.transport.session_ctx import (
@@ -70,6 +72,51 @@ class AppConfig:
     secrets: YamlSecretStore
     limiter: RateLimiter | None = None
     audit: MultiSinkAuditEmitter | None = None
+    rate_limiter_raw: dict[str, object] | None = None
+
+
+def _build_rate_limiter(
+    *,
+    cfg: RateLimiterConfig,
+    default: RateLimitConfig,
+    per_tenant: dict[str, RateLimitConfig],
+) -> RateLimiter:
+    """Build the configured rate-limiter backend.
+
+    backend == "in_process" -> InProcessRateLimiter (v1.0 behavior).
+    backend == "redis" -> RedisRateLimiter; requires WAZUH_MCP_REDIS_URL env var.
+    """
+    if cfg.backend == "in_process":
+        return InProcessRateLimiter(default=default, per_tenant=per_tenant)
+
+    redis_url = os.environ.get("WAZUH_MCP_REDIS_URL", "").strip()
+    if not redis_url:
+        raise RuntimeError(
+            "rate_limiter.backend = 'redis' but WAZUH_MCP_REDIS_URL is not set; "
+            "either unset rate_limiter or provide the URL via environment"
+        )
+
+    from redis.asyncio import Redis as AsyncRedis
+
+    from wazuh_mcp.rate_limit.redis_limiter import (
+        RedisRateLimiter,
+        _RedisCircuitBreaker,
+    )
+
+    client = AsyncRedis.from_url(redis_url, decode_responses=False)
+    breaker = _RedisCircuitBreaker(
+        error_threshold=cfg.redis.circuit_breaker.error_threshold,
+        open_duration_sec=cfg.redis.circuit_breaker.open_duration_sec,
+        half_open_max_calls=cfg.redis.circuit_breaker.half_open_max_calls,
+        call_timeout_ms=cfg.redis.call_timeout_ms,
+    )
+    return RedisRateLimiter(
+        redis_client=client,
+        default=default,
+        per_tenant=per_tenant,
+        key_prefix=cfg.redis.key_prefix,
+        breaker=breaker,
+    )
 
 
 def load_config(config_dir: Path) -> AppConfig:
@@ -81,7 +128,12 @@ def load_config(config_dir: Path) -> AppConfig:
     user_id = server_cfg.get("user_id", "local")
     tenant = registry.get(tenant_id)
     factory = ConfigSessionFactory(user_id=user_id, tenant=tenant)
-    return AppConfig(factory=factory, tenant=tenant, secrets=secrets)
+    return AppConfig(
+        factory=factory,
+        tenant=tenant,
+        secrets=secrets,
+        rate_limiter_raw=server_cfg.get("rate_limiter") or None,
+    )
 
 
 def _build_sinks(tenant: TenantConfig, *, indexer_pool: Any) -> list[AuditSink]:
@@ -242,7 +294,9 @@ def build_app(cfg: AppConfig, audit: MultiSinkAuditEmitter | None = None) -> Fas
             per_tenant_sinks=_build_per_tenant_sinks([cfg.tenant], indexer_pool=None),
         )
     )
-    limiter = cfg.limiter or InProcessRateLimiter(
+    rl_cfg = RateLimiterConfig.model_validate(cfg.rate_limiter_raw or {})
+    limiter = cfg.limiter or _build_rate_limiter(
+        cfg=rl_cfg,
         default=cfg.tenant.rate_limit,
         per_tenant={cfg.tenant.tenant_id: cfg.tenant.rate_limit},
     )
@@ -377,6 +431,7 @@ class HttpAppConfig:
     registry: TenantRegistry | None = None
     limiter: RateLimiter | None = None
     audit: MultiSinkAuditEmitter | None = None
+    rate_limiter_raw: dict[str, object] | None = None
 
 
 def _tenant_ids(path: Path) -> list[str]:
@@ -425,6 +480,7 @@ def load_http_config(config_dir: Path) -> HttpAppConfig:
         authorization_server=oauth_cfg["issuer"],
         tenant=primary_tenant,
         registry=registry,
+        rate_limiter_raw=server_cfg.get("rate_limiter") or None,
     )
 
 
@@ -452,14 +508,17 @@ def build_http_app(http_cfg: HttpAppConfig, audit: MultiSinkAuditEmitter | None 
     if http_cfg.limiter is not None:
         limiter = http_cfg.limiter
     else:
-        from wazuh_mcp.tenancy.m4_config import RateLimitConfig
-
         all_tenants = list(http_cfg.registry.all_tenants()) if http_cfg.registry else []
         default_cfg = (
             http_cfg.tenant.rate_limit if http_cfg.tenant is not None else RateLimitConfig()
         )
         per_tenant_cfg = {t.tenant_id: t.rate_limit for t in all_tenants}
-        limiter = InProcessRateLimiter(default=default_cfg, per_tenant=per_tenant_cfg)
+        rl_cfg = RateLimiterConfig.model_validate(http_cfg.rate_limiter_raw or {})
+        limiter = _build_rate_limiter(
+            cfg=rl_cfg,
+            default=default_cfg,
+            per_tenant=per_tenant_cfg,
+        )
 
     mcp_app = FastMCP(name="wazuh-mcp")
 

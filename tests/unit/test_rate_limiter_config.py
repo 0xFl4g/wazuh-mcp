@@ -79,3 +79,43 @@ def test_full_config_round_trip() -> None:
     assert cfg.redis.key_prefix == "custom:rl"
     assert cfg.redis.call_timeout_ms == 75
     assert cfg.redis.circuit_breaker.error_threshold == 5
+
+
+def test_build_rate_limiter_in_process_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    from wazuh_mcp.rate_limit.limiter import InProcessRateLimiter
+    from wazuh_mcp.server import _build_rate_limiter
+    from wazuh_mcp.tenancy.m4_config import RateLimitConfig
+
+    rl = _build_rate_limiter(
+        cfg=RateLimiterConfig(),
+        default=RateLimitConfig(),
+        per_tenant={},
+    )
+    assert isinstance(rl, InProcessRateLimiter)
+
+
+def test_build_rate_limiter_redis_requires_url(monkeypatch: pytest.MonkeyPatch) -> None:
+    from wazuh_mcp.server import _build_rate_limiter
+    from wazuh_mcp.tenancy.m4_config import RateLimitConfig
+
+    monkeypatch.delenv("WAZUH_MCP_REDIS_URL", raising=False)
+    with pytest.raises(RuntimeError, match="WAZUH_MCP_REDIS_URL"):
+        _build_rate_limiter(
+            cfg=RateLimiterConfig.model_validate({"backend": "redis"}),
+            default=RateLimitConfig(),
+            per_tenant={},
+        )
+
+
+def test_build_rate_limiter_redis_constructs(monkeypatch: pytest.MonkeyPatch) -> None:
+    from wazuh_mcp.rate_limit.redis_limiter import RedisRateLimiter
+    from wazuh_mcp.server import _build_rate_limiter
+    from wazuh_mcp.tenancy.m4_config import RateLimitConfig
+
+    monkeypatch.setenv("WAZUH_MCP_REDIS_URL", "redis://localhost:6379/0")
+    rl = _build_rate_limiter(
+        cfg=RateLimiterConfig.model_validate({"backend": "redis"}),
+        default=RateLimitConfig(),
+        per_tenant={},
+    )
+    assert isinstance(rl, RedisRateLimiter)
