@@ -2,7 +2,7 @@
 
 Model Context Protocol server for Wazuh SIEM/XDR.
 
-**Status:** v1.0.0. Production-ready release: multi-tenant policy resolution, full read+write tool surface (18 reads + 9 writes including group-target active-response), real secret backends, RBAC + rate-limit + audit chokepoint, OTel + Prom metrics, OAuth 2.1 + API-key auth, stdio + Streamable HTTP transports, Helm chart for Kubernetes deploy, Wazuh LTS+latest matrix CI. See [`docs/deploy/README.md`](docs/deploy/README.md) for the topic-organized deployment guide, [`docs/api-reference.md`](docs/api-reference.md) for the comprehensive per-tool API reference, and `docs/superpowers/specs/` for design specs per milestone.
+**Status:** v1.0.x. Production-ready release: multi-tenant policy resolution, full read+write tool surface (18 reads + 9 writes including group-target active-response), real secret backends, RBAC + rate-limit + audit chokepoint, OTel + Prom metrics, OAuth 2.1 + API-key auth, stdio + Streamable HTTP transports, Helm chart for Kubernetes deploy. **Tested against Wazuh 4.9 LTS** — expected compatible with newer 4.x via documented API compat (file an issue if you find a regression; matrix-test against 4.14+ deferred pending larger CI runners). See [`docs/deploy/README.md`](docs/deploy/README.md) for the topic-organized deployment guide, [`docs/api-reference.md`](docs/api-reference.md) for the comprehensive per-tool API reference, and `docs/superpowers/specs/` for design specs per milestone.
 
 ## Tools (17)
 

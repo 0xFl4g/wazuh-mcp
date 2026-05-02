@@ -18,7 +18,7 @@ jobs:
       matrix:
         wazuh_version:
           - "4.9.0"
-          - "4.14.5"
+          # 4.14.5 dropped v1.0.10 — see integration.yml for rationale.
     env:
       WAZUH_VERSION: ${{ matrix.wazuh_version }}
     steps:
