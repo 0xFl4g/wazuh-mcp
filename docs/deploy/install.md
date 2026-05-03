@@ -210,7 +210,7 @@ Key constraints under stdio:
 HTTP transport runs uvicorn on the address in `server.yaml`'s `http.bind` and exposes:
 
 - `POST /mcp` — the Streamable HTTP transport endpoint. OAuth-fronted (or API-key fronted) per `auth_chain`.
-- `GET /healthz` — `{"status":"ok"}` once the process is up.
+- `GET /healthz` — `{"status":"ok", "rate_limiter": {...}}` once the process is up. The `rate_limiter` field reflects backend + breaker state — see `redis.md` for the field shape.
 - `GET /readyz` — `{"status":"ok"}` once JWKS has been fetched for every configured issuer.
 - `GET /.well-known/oauth-protected-resource` — the RFC 8707 protected-resource metadata document.
 - `GET /metrics` — Prometheus scrape endpoint, NOT behind the auth chain. Network-scope it. See `observability.md`.
@@ -222,7 +222,7 @@ Multi-tenancy is implicit: each tenant in `tenants.yaml` gets its own indexer + 
 Health probes:
 
 ```
-curl https://mcp.example.com/healthz                                  # → {"status":"ok"}
+curl https://mcp.example.com/healthz                                  # → {"status":"ok", "rate_limiter": {"backend": "in_process", "redis": "disabled"}}
 curl https://mcp.example.com/readyz                                   # → {"status":"ok"} once JWKS fetched
 curl https://mcp.example.com/.well-known/oauth-protected-resource     # → resource + authorization_servers
 ```

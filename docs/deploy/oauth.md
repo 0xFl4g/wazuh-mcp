@@ -133,7 +133,7 @@ Cross-check: if the MCP audit event shows `user=alice@example.com` but the Wazuh
 After bringing the deploy up, smoke-test the OAuth chain:
 
 ```
-curl https://mcp.example.com/healthz                                  # → {"status":"ok"}
+curl https://mcp.example.com/healthz                                  # → {"status":"ok", "rate_limiter": {...}}
 curl https://mcp.example.com/readyz                                   # → {"status":"ok"} once JWKS fetched
 curl https://mcp.example.com/.well-known/oauth-protected-resource     # → resource + authorization_servers
 ```
