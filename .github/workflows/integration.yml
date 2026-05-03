@@ -46,6 +46,9 @@ jobs:
 
       - name: Run integration suite
         run: uv run pytest -m "integration and not destructive and not multi_manager" -v --junitxml=integration-report.xml
+        env:
+          COMPOSE_PROJECT_NAME: wazuh-mcp-ci
+          WAZUH_MCP_REDIS_URL: redis://localhost:6379/0
 
       - name: Always-dump compose logs
         if: always()
@@ -53,7 +56,7 @@ jobs:
           mkdir -p integration-logs
           docker compose -p wazuh-mcp-ci -f docker/integration-compose.yml ps -a > integration-logs/compose-ps.log 2>&1 || true
           docker compose -p wazuh-mcp-ci -f docker/integration-compose.yml logs --no-color --tail=2000 > integration-logs/compose.log 2>&1 || true
-          for svc in wazuh-manager wazuh-indexer keycloak wazuh-agent; do
+          for svc in wazuh-manager wazuh-indexer keycloak wazuh-agent redis; do
             docker compose -p wazuh-mcp-ci -f docker/integration-compose.yml logs --no-color "$svc" > "integration-logs/${svc}.log" 2>&1 || true
           done
 
