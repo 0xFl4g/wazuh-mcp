@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/0xFl4g/wazuh-mcp/security/advisories/new
+    about: Do not file security issues as public issues. Use private vulnerability reporting instead. See SECURITY.md for scope and what to include.
+  - name: Operator question (deploy / config / Wazuh integration)
+    url: https://github.com/0xFl4g/wazuh-mcp/discussions
+    about: Open a discussion if you're stuck on deployment, RBAC, OAuth, or how a tool maps onto your Wazuh setup. Bugs and feature requests still go through the issue forms above.

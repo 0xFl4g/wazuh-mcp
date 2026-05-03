@@ -1,0 +1,43 @@
+name: Feature request
+description: Propose a new tool, integration, or behavior change.
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What can't you do today, or what's painful? Concrete scenarios beat abstract asks.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: What would you like wazuh-mcp to do? If you have a tool name + arg shape in mind, sketch it.
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Workarounds you've already tried, related tools, or other API shapes you considered.
+
+  - type: dropdown
+    id: scope
+    attributes:
+      label: Rough scope
+      options:
+        - New read tool
+        - New write tool
+        - Existing tool — argument or behavior change
+        - Deploy / config
+        - Observability (metrics, audit, healthz)
+        - Documentation
+        - Other
+      default: 0
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Additional context
+      description: Pointers to upstream Wazuh API docs, related issues, or design considerations.

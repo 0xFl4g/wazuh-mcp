@@ -1,0 +1,81 @@
+name: Bug report
+description: Report a defect in wazuh-mcp.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for filing a report. Please don't use this form for security
+        issues — use [private vulnerability reporting](https://github.com/0xFl4g/wazuh-mcp/security/advisories/new) instead. See [`SECURITY.md`](../../SECURITY.md).
+
+  - type: input
+    id: version
+    attributes:
+      label: wazuh-mcp version
+      description: Tag (e.g. `v1.1.0`) or commit SHA. Find via `wazuh-mcp --version` or the GHCR image tag.
+      placeholder: "v1.1.0"
+    validations:
+      required: true
+
+  - type: input
+    id: wazuh
+    attributes:
+      label: Wazuh version
+      description: e.g. `4.9.0`. Multiple? List both.
+      placeholder: "4.9.0"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: transport
+    attributes:
+      label: Transport
+      options:
+        - stdio
+        - HTTP (Streamable)
+        - both
+      default: 0
+    validations:
+      required: true
+
+  - type: dropdown
+    id: deploy
+    attributes:
+      label: Deploy shape
+      description: Where is wazuh-mcp running?
+      options:
+        - Local dev (uv run, single tenant)
+        - Docker / docker-compose
+        - Kubernetes (Helm chart)
+        - Other
+      default: 0
+
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What did you observe? Paste error messages and stack traces verbatim. Redact any real credentials.
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Reproduction steps
+      description: Minimal config + commands needed to reproduce. The smaller the better.
+    validations:
+      required: true
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Additional context
+      description: Logs (`/healthz`, `/metrics` snippets), `tenants.yaml` shape (with creds redacted), anything else relevant.
