@@ -4,6 +4,14 @@ on:
     branches: [main]
   pull_request:
 
+env:
+  # Opt into Node 24 for all JavaScript actions ahead of GitHub's June 2026
+  # forced default. Silences 'Node.js 20 actions are deprecated' warnings on
+  # third-party actions (gitleaks-action@v2, docker/*, codeql-action@v3) that
+  # haven't yet shipped Node 24-compatible majors. Drop once upstreams update.
+  # https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
 jobs:
   lint-and-unit:
     runs-on: ubuntu-latest
