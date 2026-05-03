@@ -52,7 +52,14 @@ jobs:
             --verbose
 
       - name: Upload SARIF to GH Security tab
+        # The SARIF upload step requires GitHub Code Scanning to be enabled
+        # on the repo. When it is not (default on new private repos), the
+        # upload errors with 'Code scanning is not enabled'. The actual
+        # operational signal is the gitleaks scan exit code above; this
+        # upload is a UI nice-to-have, so its failure must not fail the
+        # workflow.
         if: always() && hashFiles('gitleaks-logs.sarif') != ''
+        continue-on-error: true
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: gitleaks-logs.sarif
