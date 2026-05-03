@@ -164,3 +164,92 @@ async def test_state_transitions_recorded_for_observability() -> None:
     from_state, to_state = breaker.last_transition
     assert from_state == BreakerState.CLOSED
     assert to_state == BreakerState.OPEN
+
+
+@pytest.mark.asyncio
+async def test_half_open_admits_up_to_max_calls_then_rejects() -> None:
+    """With half_open_max_calls=2, exactly 2 concurrent probes get admitted; the third is rejected."""
+    breaker = _RedisCircuitBreaker(
+        **_bcfg(
+            error_threshold=2, open_duration_sec=0.05, half_open_max_calls=2, call_timeout_ms=200
+        )
+    )
+    counter = _Counter()
+    counter.should_fail = True
+    for _ in range(2):
+        with pytest.raises(RuntimeError):
+            await breaker.call(counter)
+    assert breaker.state == BreakerState.OPEN
+    await asyncio.sleep(0.06)
+
+    # Block the probe so we can observe HALF_OPEN admission counting.
+    counter.should_fail = False
+    block_event = asyncio.Event()
+
+    async def slow_probe() -> int:
+        await block_event.wait()
+        return 1
+
+    # Admit two probes (the budget). They both proceed to wait on block_event.
+    t1 = asyncio.create_task(breaker.call(slow_probe))
+    t2 = asyncio.create_task(breaker.call(slow_probe))
+    await asyncio.sleep(0.01)  # let them grab the budget
+
+    # Third concurrent call should be rejected with CircuitBreakerOpenError —
+    # budget exhausted in HALF_OPEN.
+    with pytest.raises(CircuitBreakerOpenError):
+        await breaker.call(slow_probe)
+
+    # Release the two probes; on success both → CLOSED.
+    block_event.set()
+    await t1
+    await t2
+    assert breaker.state == BreakerState.CLOSED
+
+
+@pytest.mark.asyncio
+async def test_half_open_concurrent_failures_refresh_opened_at() -> None:
+    """Reviewer-fix path (a1100f0): a stale probe failure landing in OPEN refreshes _opened_at.
+
+    Drives two concurrent probes in HALF_OPEN, both fail. The second
+    failure arrives after the first already transitioned to OPEN; the
+    second's _record_failure must refresh _opened_at instead of being
+    a no-op.
+    """
+    clock = [0.0]
+
+    def fake_now() -> float:
+        return clock[0]
+
+    breaker = _RedisCircuitBreaker(
+        error_threshold=2,
+        open_duration_sec=0.05,
+        half_open_max_calls=2,
+        call_timeout_ms=200,
+        now=fake_now,
+    )
+    counter = _Counter()
+    counter.should_fail = True
+    # Trip the breaker.
+    for _ in range(2):
+        with pytest.raises(RuntimeError):
+            await breaker.call(counter)
+    assert breaker.state == BreakerState.OPEN
+
+    # Advance clock past open_duration so next call promotes to HALF_OPEN.
+    clock[0] = 1.0
+    # First HALF_OPEN failure transitions to OPEN at clock=1.0.
+    with pytest.raises(RuntimeError):
+        await breaker.call(counter)
+    assert breaker.state == BreakerState.OPEN
+    first_opened = breaker._opened_at
+
+    # Advance clock; force a stale probe failure to land while OPEN.
+    clock[0] = 2.0
+    # The breaker is OPEN with _opened_at=1.0; calling now would raise CircuitBreakerOpenError
+    # before reaching fn. Drive _record_failure directly to simulate the stale-probe race.
+    await breaker._record_failure()
+
+    # _opened_at must be refreshed to clock=2.0, not stuck at 1.0.
+    assert breaker._opened_at == 2.0
+    assert breaker._opened_at != first_opened
