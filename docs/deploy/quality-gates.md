@@ -82,7 +82,7 @@ All four fields required (`id`, `reason`, `expires`, `reviewer`). The weekly `se
 
 ### secret-leak-scan job
 
-`gitleaks-action@v2` with custom `.gitleaks.toml` (extends defaults; adds Wazuh JWT + Keycloak secret + Wazuh manager password patterns). Allowlist for known-safe test fixtures in `.gitleaksallow`.
+`gitleaks-action@v2` with custom `.gitleaks.toml` (extends defaults; adds Wazuh JWT + Keycloak secret + Wazuh manager password patterns). Test-fixture allowlist (Wazuh manager test password, per-tenant secrets, Vault unseal key, Keycloak demo realm tokens, hex fingerprints used in pivot-by-ioc tests) lives in the `[allowlist]` block of `.gitleaks.toml`.
 
 ## 4. Destructive-test isolation (M5a)
 
@@ -141,7 +141,7 @@ Workflow chain:
 2. `integration-log-scan.yml` triggers on the artifact upload, pulls the artifact, and runs gitleaks against it.
 3. If gitleaks finds anything, the chained workflow fails and surfaces the leak to the maintainer.
 
-The same `.gitleaks.toml` + `.gitleaksallow` from §3 apply, so test-fixture allowlists carry through.
+The same `.gitleaks.toml` from §3 applies, so test-fixture allowlists carry through.
 
 ## Migration
 
