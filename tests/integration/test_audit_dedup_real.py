@@ -91,9 +91,18 @@ async def indexer_sink(indexer) -> AsyncIterator[WazuhIndexerSink]:
     finally:
         await sink.stop()
         # Best-effort cleanup. IndexerClient exposes _client (httpx.AsyncClient)
-        # for raw HTTP; deletion via wildcard index pattern.
+        # for raw HTTP. Two deletes:
+        #   1. The created daily indices.
+        #   2. The composable index template. CRITICAL: leaving the template
+        #      behind makes OpenSearch reject any subsequent template install
+        #      that has overlapping patterns (e.g. M4a's 'wazuh-mcp-audit-*'
+        #      overlaps with our 'wazuh-mcp-audit-dedup-itest-{pid}-*'). The
+        #      conflict surfaces as a 400 from put_index_template, which
+        #      cascades into audit-event drops in unrelated tests.
         with contextlib.suppress(Exception):
             await indexer._client.delete(f"/{prefix}-*")  # deliberate private access
+        with contextlib.suppress(Exception):
+            await indexer._client.delete(f"/_index_template/{prefix}-template")
 
 
 async def _count_docs(indexer: Any, prefix: str) -> int:
