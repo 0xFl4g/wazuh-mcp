@@ -1,0 +1,76 @@
+{
+  "by_category": {
+    "fim": {
+      "accuracy": 1.0,
+      "failed": 0,
+      "passed": 3,
+      "total": 3
+    },
+    "hunt": {
+      "accuracy": 1.0,
+      "failed": 0,
+      "passed": 9,
+      "total": 9
+    },
+    "inventory": {
+      "accuracy": 1.0,
+      "failed": 0,
+      "passed": 5,
+      "total": 5
+    },
+    "mitre": {
+      "accuracy": 1.0,
+      "failed": 0,
+      "passed": 5,
+      "total": 5
+    },
+    "triage": {
+      "accuracy": 1.0,
+      "failed": 0,
+      "passed": 7,
+      "total": 7
+    },
+    "vulns": {
+      "accuracy": 1.0,
+      "failed": 0,
+      "passed": 4,
+      "total": 4
+    },
+    "writes": {
+      "accuracy": 1.0,
+      "failed": 0,
+      "passed": 12,
+      "total": 12
+    }
+  },
+  "by_tier": {
+    "multi_step": {
+      "accuracy": 1.0,
+      "failed": 0,
+      "passed": 5,
+      "total": 5
+    },
+    "selection_only": {
+      "accuracy": 1.0,
+      "failed": 0,
+      "passed": 30,
+      "total": 30
+    },
+    "with_args": {
+      "accuracy": 1.0,
+      "failed": 0,
+      "passed": 10,
+      "total": 10
+    }
+  },
+  "failures": [],
+  "model": "claude-opus-4-7",
+  "overall": {
+    "accuracy": 1.0,
+    "failed": 0,
+    "passed": 45,
+    "total": 45
+  },
+  "run_date": "2026-05-04",
+  "thresholds_met": true
+}
