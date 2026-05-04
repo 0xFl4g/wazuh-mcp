@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import re
 
+import pytest
+
 from wazuh_mcp.auth.session import Session
 from wazuh_mcp.observability.audit import MultiSinkAuditEmitter
 from wazuh_mcp.observability.audit_context import reset_request_id, set_request_id
@@ -118,3 +120,112 @@ def test_existing_fields_unchanged() -> None:
     assert ev["tool"] == "cluster.status"
     assert ev["user"] == "alice"
     assert ev["tenant"] == "default"
+
+
+# ---------------------------------------------------------------------------
+# WazuhIndexerSink — bulk body + template tests
+# ---------------------------------------------------------------------------
+
+
+class _FakeIndexerClient:
+    """Captures put_index_template / bulk calls without going to the wire."""
+
+    def __init__(self) -> None:
+        self.template_body: dict[str, object] | None = None
+        self.bulk_body: str | None = None
+
+    async def put_index_template(self, *, name: str, body: dict[str, object]) -> None:
+        self.template_body = body
+
+    async def bulk(self, *, body: str) -> dict[str, object]:
+        self.bulk_body = body
+        return {"errors": False, "items": []}
+
+
+class _FakePool:
+    def __init__(self, client: _FakeIndexerClient) -> None:
+        self._client = client
+
+    async def acquire(self, tenant_id: str) -> _FakeIndexerClient:
+        return self._client
+
+
+@pytest.mark.asyncio
+async def test_bulk_body_sets_id_from_event_id() -> None:
+    from wazuh_mcp.observability.sinks.wazuh_indexer import WazuhIndexerSink
+
+    client = _FakeIndexerClient()
+    sink = WazuhIndexerSink(pool=_FakePool(client), tenant_id="t1")
+    events = [
+        {
+            "event_id": "id-A",
+            "tool": "x",
+            "user": "u",
+            "tenant": "t1",
+            "rbac_role": "analyst",
+            "arg_hash": "h",
+            "outcome": "ok",
+            "result_count": 0,
+            "duration_ms": 1,
+            "timestamp": "2026-05-04T00:00:00+00:00",
+            "request_id": "rpc-1",
+        },
+        {
+            "event_id": "id-B",
+            "tool": "y",
+            "user": "u",
+            "tenant": "t1",
+            "rbac_role": "analyst",
+            "arg_hash": "h",
+            "outcome": "ok",
+            "result_count": 0,
+            "duration_ms": 1,
+            "timestamp": "2026-05-04T00:00:00+00:00",
+            "request_id": "rpc-2",
+        },
+    ]
+    body = sink._build_bulk_body(events)  # deliberate test access
+    # Two action lines, two doc lines, plus trailing newline.
+    lines = body.rstrip("\n").split("\n")
+    assert len(lines) == 4
+    assert '"_id": "id-A"' in lines[0]
+    assert '"_id": "id-B"' in lines[2]
+
+
+@pytest.mark.asyncio
+async def test_bulk_body_omits_id_when_event_id_missing() -> None:
+    """Defensive: events injected without event_id (legacy / hand-crafted) fall back to auto-UUID."""
+    from wazuh_mcp.observability.sinks.wazuh_indexer import WazuhIndexerSink
+
+    client = _FakeIndexerClient()
+    sink = WazuhIndexerSink(pool=_FakePool(client), tenant_id="t1")
+    events = [
+        {
+            "tool": "x",
+            "user": "u",
+            "tenant": "t1",
+            "rbac_role": "analyst",
+            "arg_hash": "h",
+            "outcome": "ok",
+            "result_count": 0,
+            "duration_ms": 1,
+            "timestamp": "2026-05-04T00:00:00+00:00",
+        },
+    ]
+    body = sink._build_bulk_body(events)  # deliberate test access
+    lines = body.rstrip("\n").split("\n")
+    assert '"_id"' not in lines[0]
+
+
+@pytest.mark.asyncio
+async def test_template_declares_new_field_mappings() -> None:
+    """The index template install carries event_id + request_id as keyword."""
+    from wazuh_mcp.observability.sinks.wazuh_indexer import WazuhIndexerSink
+
+    client = _FakeIndexerClient()
+    sink = WazuhIndexerSink(pool=_FakePool(client), tenant_id="t1")
+    await sink._ensure_template()  # deliberate test access
+    assert client.template_body is not None
+    props = client.template_body["template"]["mappings"]["properties"]
+    assert props["event_id"] == {"type": "keyword"}
+    assert props["request_id"] == {"type": "keyword"}

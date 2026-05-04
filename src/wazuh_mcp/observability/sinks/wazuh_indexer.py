@@ -71,6 +71,8 @@ class WazuhIndexerSink(QueuedSink):
                         "result_count": {"type": "long"},
                         "duration_ms": {"type": "long"},
                         "error_code": {"type": "keyword"},
+                        "event_id": {"type": "keyword"},
+                        "request_id": {"type": "keyword"},
                     },
                 },
             },
@@ -85,7 +87,11 @@ class WazuhIndexerSink(QueuedSink):
         index = self._today_index()
         lines: list[str] = []
         for ev in events:
-            lines.append(json.dumps({"index": {"_index": index}}))
+            action: dict[str, Any] = {"index": {"_index": index}}
+            event_id = ev.get("event_id")
+            if event_id is not None:
+                action["index"]["_id"] = event_id
+            lines.append(json.dumps(action))
             lines.append(json.dumps(ev))
         return "\n".join(lines) + "\n"
 
