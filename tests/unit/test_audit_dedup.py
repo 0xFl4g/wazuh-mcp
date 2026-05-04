@@ -226,6 +226,9 @@ async def test_template_declares_new_field_mappings() -> None:
     sink = WazuhIndexerSink(pool=_FakePool(client), tenant_id="t1")
     await sink._ensure_template()  # deliberate test access
     assert client.template_body is not None
+    # Priority distinguisher to resolve overlapping-pattern conflicts when two
+    # operators deploy with adjacent index_prefix values.
+    assert client.template_body["priority"] == 100
     props = client.template_body["template"]["mappings"]["properties"]  # ty: ignore[not-subscriptable]
     assert props["event_id"] == {"type": "keyword"}
     assert props["request_id"] == {"type": "keyword"}

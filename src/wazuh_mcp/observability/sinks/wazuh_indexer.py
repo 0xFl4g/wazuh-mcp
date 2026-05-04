@@ -53,6 +53,14 @@ class WazuhIndexerSink(QueuedSink):
         client = await self._pool.acquire(self._tenant_id)
         body: dict[str, Any] = {
             "index_patterns": [f"{self._prefix}-*"],
+            # Priority resolves overlap between operator-chosen index_prefix
+            # values when their patterns happen to overlap (e.g. one operator
+            # picks 'wazuh-mcp-audit' and another picks 'wazuh-mcp-audit-foo';
+            # both patterns match 'wazuh-mcp-audit-foo-*'). OpenSearch v7.8+
+            # composable index templates require a priority distinguisher to
+            # accept overlapping patterns; without one, the second template
+            # install returns 400 and audit events land nowhere.
+            "priority": 100,
             "template": {
                 "settings": {
                     "number_of_shards": 1,
