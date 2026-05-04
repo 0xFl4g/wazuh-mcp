@@ -18,11 +18,13 @@ from __future__ import annotations
 import contextlib
 import hashlib
 import json
+import uuid
 from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 from typing import Any
 
 from wazuh_mcp.auth.session import Session
+from wazuh_mcp.observability.audit_context import get_request_id
 from wazuh_mcp.observability.sinks.base import AuditSink, QueuedSink
 from wazuh_mcp.observability.sinks.stream import StderrSink
 
@@ -143,6 +145,8 @@ class MultiSinkAuditEmitter:
             "result_count": result_count,
             "duration_ms": duration_ms,
         }
+        event["event_id"] = str(uuid.uuid4())
+        event["request_id"] = get_request_id()
         if error_code is not None:
             event["error_code"] = error_code
         if error_reason is not None:
