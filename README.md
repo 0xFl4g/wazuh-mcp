@@ -9,7 +9,7 @@
 
 Model Context Protocol server for Wazuh SIEM/XDR.
 
-**Status:** v1.1.0. Production-ready release: multi-tenant policy resolution, full read+write tool surface (18 reads + 9 writes including group-target active-response), real secret backends, RBAC + rate-limit + audit chokepoint, OTel + Prom metrics, OAuth 2.1 + API-key auth, stdio + Streamable HTTP transports, Helm chart for Kubernetes deploy, opt-in Redis-backed RateLimiter for multi-replica HA. **Tested against Wazuh 4.9 LTS** — expected compatible with newer 4.x via documented API compat (file an issue if you find a regression; matrix-test against 4.14+ deferred pending larger CI runners). See [`docs/deploy/README.md`](docs/deploy/README.md) for the topic-organized deployment guide, [`docs/api-reference.md`](docs/api-reference.md) for the comprehensive per-tool API reference, and `docs/superpowers/specs/` for design specs per milestone.
+**Status:** v1.2.0. Production-ready release: multi-tenant policy resolution, full read+write tool surface (18 reads + 9 writes including group-target active-response), real secret backends, RBAC + rate-limit + audit chokepoint, OTel + Prom metrics, OAuth 2.1 + API-key auth, stdio + Streamable HTTP transports, Helm chart for Kubernetes deploy, opt-in Redis-backed RateLimiter + audit-emitter dedup for true multi-replica HA. **Tested against Wazuh 4.9 LTS** — expected compatible with newer 4.x via documented API compat (file an issue if you find a regression; matrix-test against 4.14+ deferred pending larger CI runners). See [`docs/deploy/README.md`](docs/deploy/README.md) for the topic-organized deployment guide, [`docs/api-reference.md`](docs/api-reference.md) for the comprehensive per-tool API reference, and `docs/superpowers/specs/` for design specs per milestone.
 
 ## Tools (17)
 
@@ -141,6 +141,7 @@ Integration tests (docker compose required):
 - **M4d (v0.7.0-m4d)** — multi-tenant runtime isolation completion: per-tenant rate-limit budgets (closes cross-tenant DOS), per-tenant audit-sink fan-out (closes cross-tenant audit leak). No new operator-config surface. See `docs/deploy/m4d-multi-tenant-runtime.md`.
 - **M5 (planned)** — ship-gate: eval harness, Wazuh LTS matrix CI, cross-tenant leak suite, multi-manager integration fixture, Helm chart, full docs.
 - **v1.1** — multi-replica HA opt-in: `RedisRateLimiter` shares the rate budget across replicas via Lua-scripted token buckets; per-process circuit breaker falls back to v1.0 in-process behavior on Redis outage. See [`docs/deploy/redis.md`](docs/deploy/redis.md).
+- **v1.2** — multi-replica HA completion: audit-emitter cross-replica dedup via per-emit `event_id` (used as OpenSearch `_id`) + queryable `request_id` correlation. Closes the second half of the v1.0 HA caveat. See [`docs/deploy/observability.md`](docs/deploy/observability.md).
 
 See `docs/superpowers/specs/` for full specs per milestone.
 

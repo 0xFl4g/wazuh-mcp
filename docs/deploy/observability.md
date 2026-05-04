@@ -175,6 +175,8 @@ Every tool call produces exactly one audit event on every exit path — `ok`, ma
 | `error_code` | string? | Set only when `outcome=error`. One of `SAFE_CODES`. |
 | `error_reason` | string? | Optional structured reason (e.g., `tenant_not_registered` for `<rbac.resolve>`). |
 | `scope` | string? | Set only when the underlying `WazuhError` carried a scope (rate-limit + allowlist denials). |
+| `event_id` | string | (v1.2+) Per-emit UUIDv4. Used as the OpenSearch `_id` on the bulk-index action so retries from `QueuedSink` upsert idempotently — no duplicate documents on partial-success bulk retry. |
+| `request_id` | string? | (v1.2+) JSON-RPC id of the originating MCP request, populated from MCP SDK's `request_ctx`. Null for stdio transport (until plumbed) and for any emit outside an active MCP request scope (e.g. RBAC resolver-miss). |
 
 ### `MultiSinkAuditEmitter`
 
@@ -186,6 +188,33 @@ Dual-track:
 `emit(session)` writes to globals + `per_tenant_sinks.get(session.tenant_id, [])`. Unknown tenants route to globals only — preserves visibility for the resolver-miss path.
 
 See `multi-tenant.md` for the per-tenant fan-out details and `src/wazuh_mcp/observability/audit.py` for the implementation.
+
+### Audit dedup (v1.2+)
+
+Two fields work together to make retry-induced duplicates a non-issue:
+
+- **`event_id`** is set as the OpenSearch `_id` on the bulk-index action. `op_type=index` (the default) upserts on `_id` collision — retries from `QueuedSink` post the same event with the same `event_id` and silently overwrite the existing doc instead of inserting a duplicate. End-effect: at-least-once delivery becomes effectively exactly-once at the index layer.
+- **`request_id`** is queryable. If cross-replica observation overlap ever materializes (rare in practice — JSON-RPC clients use unique `id`s per request), operators dedup at query time:
+
+```bash
+curl -sku admin:admin "https://wazuh-indexer:9200/local-audit-*/_search" \
+  -H 'Content-Type: application/json' -d '{
+    "query": { "term": { "request_id": "rpc-77" } }
+  }'
+```
+
+#### Index template + manual rollover
+
+The Wazuh-indexer sink installs an index template declaring `event_id` and `request_id` as `keyword`. The template applies to **future** daily indices automatically. Existing indices written under v1.1 (which had `dynamic: false` and the older mapping) accept the new fields on writes but **won't field-index them until they roll**.
+
+If you want the current day's index to reflect the new mapping immediately:
+
+```bash
+curl -sku admin:admin -X POST "https://wazuh-indexer:9200/local-audit-*/_rollover" \
+  -H 'Content-Type: application/json' -d '{}'
+```
+
+This is **not required for correctness** — every operator query that doesn't filter on `event_id` or `request_id` keeps working without rollover. Skipping the rollover means new fields aren't queryable on the current day's docs but are queryable from tomorrow onward.
 
 ## Audit sinks
 

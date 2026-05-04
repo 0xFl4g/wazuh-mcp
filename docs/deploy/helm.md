@@ -124,20 +124,21 @@ Cert-manager users add the standard `cert-manager.io/cluster-issuer` annotation 
 
 ## HA caveat
 
-**v1.1 lifts the rate-limiter blocker.** Set `redis.enabled=true` in values.yaml to opt into multi-replica deployments with a Redis-backed shared rate budget. The remaining blocker is the **audit emitter**, which still buffers events in-memory before flushing to the indexer — operators querying `local-audit-*` will see duplicate-keyed events for sessions hitting different replicas. The audit-dedup blocker is closed in v1.2.
+**v1.2 closes the last v1.0 HA blocker.** Multi-replica deployments are now fully supported when both `redis.enabled=true` AND `replicaCount: 2+` are set. The audit emitter's cross-replica deduplication is solved at the OpenSearch index layer: every event carries a per-emit `event_id` (used as the `_id`) so retries from any replica's `QueuedSink` upsert idempotently. A queryable `request_id` field exposes the originating JSON-RPC request id for query-time correlation when needed. See [`docs/deploy/observability.md`](observability.md) for query examples.
 
-Status of the two original v1.0 blockers:
+Status of the original v1.0 blockers — **both closed:**
 
-1. **Rate-limiter** — closed in v1.1. `RedisRateLimiter` (Lua-scripted token bucket, atomic refill+consume) shares the budget fleet-wide. On Redis outage, a per-process circuit breaker routes calls to a per-replica `InProcessRateLimiter` fallback, degrading to v1.0 behavior until Redis recovers. See [`docs/deploy/redis.md`](redis.md) for sizing, URL syntax, and observability.
+1. **Rate-limiter** — closed in v1.1. `RedisRateLimiter` (Lua-scripted token bucket, atomic refill+consume) shares the budget fleet-wide. On Redis outage, a per-process circuit breaker routes calls to a per-replica `InProcessRateLimiter` fallback, degrading to v1.0 behavior until Redis recovers. See [`docs/deploy/redis.md`](redis.md).
+2. **Audit emitter dedup** — closed in v1.2. Per-emit `event_id` UUID + queryable `request_id`. Existing audit consumers parsing `local-audit-*` keep working — the new fields are additive.
 
-2. **Audit emitter** — still open. `MultiSinkAuditEmitter` with `QueuedSink` wrappers buffers events in-memory; cross-replica dedup doesn't exist. Multi-replica audit fan-out works (each replica writes the events it observed) but querying `local-audit-*` in OpenSearch returns duplicates for sessions that hit different replicas.
+The chart's default `replicaCount: 1` and `redis.enabled: false` stay. Bumping the default to multi-replica was rejected because it would force every existing operator to either provide a Redis Secret they may not have or explicitly pin `replicaCount: 1`. Operators who want HA opt in explicitly:
 
-Operator paths:
+1. Stand up Redis (managed: ElastiCache, Memorystore, etc.; or self-hosted).
+2. `kubectl create secret generic my-redis-creds --from-literal=redis-url=...`
+3. Set `redis.enabled=true`, `redis.existingSecret=my-redis-creds`, AND `replicaCount: 2+` in Helm values.
+4. Add a `rate_limiter:` block to your `.Values.server.yaml`.
 
-- **Maximum HA today:** set `redis.enabled=true` and `replicaCount: 2+`. Tolerate the audit duplication or query past it (e.g., dedup at query-time on `session_id` + tool-call sequence number). Wait for v1.2 if you need clean audit indices.
-- **Audit-quality first:** keep `replicaCount: 1`. Use Kubernetes-native readiness gating + restart-on-failure for resilience. Leverage Service-level retries on the client side for transient pod restarts.
-
-The chart's default `replicaCount: 1` reflects the conservative path. The default will bump to ≥ 2 in v1.2 once the audit-dedup blocker closes.
+Operators upgrading from v1.1 to v1.2 see no behavior change unless they explicitly bump `replicaCount`. Existing daily audit indices accept the new event fields on writes but won't field-index them until rollover; see [`docs/deploy/observability.md`](observability.md) for the manual `_rollover` step if you want immediate field-indexed visibility.
 
 ## Image
 
