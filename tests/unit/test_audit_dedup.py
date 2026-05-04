@@ -226,6 +226,6 @@ async def test_template_declares_new_field_mappings() -> None:
     sink = WazuhIndexerSink(pool=_FakePool(client), tenant_id="t1")
     await sink._ensure_template()  # deliberate test access
     assert client.template_body is not None
-    props = client.template_body["template"]["mappings"]["properties"]
+    props = client.template_body["template"]["mappings"]["properties"]  # ty: ignore[not-subscriptable]
     assert props["event_id"] == {"type": "keyword"}
     assert props["request_id"] == {"type": "keyword"}
