@@ -21,7 +21,7 @@ dependencies = [
     "opentelemetry-exporter-prometheus>=0.62b1,<1",
     "opentelemetry-instrumentation-httpx>=0.48b0,<1",
     "opentelemetry-instrumentation-starlette>=0.48b0,<1",
-    "redis>=5.0,<6",
+    "redis>=7.4.0,<8",
 ]
 
 [project.scripts]
