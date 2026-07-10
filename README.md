@@ -3,13 +3,13 @@
 [![CI](https://github.com/0xFl4g/wazuh-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/0xFl4g/wazuh-mcp/actions/workflows/ci.yml)
 [![Integration](https://github.com/0xFl4g/wazuh-mcp/actions/workflows/integration.yml/badge.svg)](https://github.com/0xFl4g/wazuh-mcp/actions/workflows/integration.yml)
 [![Security](https://github.com/0xFl4g/wazuh-mcp/actions/workflows/security.yml/badge.svg)](https://github.com/0xFl4g/wazuh-mcp/actions/workflows/security.yml)
-[![Release](https://img.shields.io/badge/release-v1.2.0-blue)](https://github.com/0xFl4g/wazuh-mcp/releases/tag/v1.2.0)
+[![Release](https://img.shields.io/badge/release-v1.2.1-blue)](https://github.com/0xFl4g/wazuh-mcp/releases/tag/v1.2.1)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
 
 Model Context Protocol server for Wazuh SIEM/XDR.
 
-**Status:** v1.2.0. Production-ready release: multi-tenant policy resolution, full read+write tool surface (18 reads + 9 writes including group-target active-response), real secret backends, RBAC + rate-limit + audit chokepoint, OTel + Prom metrics, OAuth 2.1 + API-key auth, stdio + Streamable HTTP transports, Helm chart for Kubernetes deploy, opt-in Redis-backed RateLimiter + audit-emitter dedup for true multi-replica HA. **Tested against Wazuh 4.9 LTS** — expected compatible with newer 4.x via documented API compat (file an issue if you find a regression; matrix-test against 4.14+ deferred pending larger CI runners). See [`docs/deploy/README.md`](docs/deploy/README.md) for the topic-organized deployment guide, [`docs/api-reference.md`](docs/api-reference.md) for the comprehensive per-tool API reference, and `docs/superpowers/specs/` for design specs per milestone.
+**Status:** v1.2.1. Production-ready release: multi-tenant policy resolution, full read+write tool surface (18 reads + 9 writes including group-target active-response), real secret backends, RBAC + rate-limit + audit chokepoint, OTel + Prom metrics, OAuth 2.1 + API-key auth, stdio + Streamable HTTP transports, Helm chart for Kubernetes deploy, opt-in Redis-backed RateLimiter + audit-emitter dedup for true multi-replica HA. **Tested against Wazuh 4.9 LTS** — expected compatible with newer 4.x via documented API compat (file an issue if you find a regression; matrix-test against 4.14+ deferred pending larger CI runners). See [`docs/deploy/README.md`](docs/deploy/README.md) for the topic-organized deployment guide, [`docs/api-reference.md`](docs/api-reference.md) for the comprehensive per-tool API reference, and `docs/superpowers/specs/` for design specs per milestone.
 
 ## Tools (17)
 
