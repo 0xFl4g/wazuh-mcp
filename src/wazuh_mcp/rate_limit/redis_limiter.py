@@ -238,8 +238,7 @@ class RedisRateLimiter:
     async def _evalsha(
         self, sha: str, key: str, capacity: int, refill: float, n: int, ttl: int
     ) -> int:
-        # redis-py stubs return Awaitable[str] | str; evalsha args are str on the wire
-        result = await self._redis.evalsha(  # ty:ignore[invalid-await]
+        result = await self._redis.evalsha(
             sha, 1, key, str(capacity), str(refill), str(self._now_ms()), str(n), str(ttl)
         )
         return int(result)

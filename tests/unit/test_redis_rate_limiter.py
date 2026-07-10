@@ -148,7 +148,7 @@ async def test_redis_connection_error_routes_to_fallback(
         async def evalsha(self, *args, **kwargs):
             if self.fail_next:
                 raise RedisConnectionError("simulated redis down")
-            return await self._real.evalsha(*args, **kwargs)  # ty: ignore[invalid-await]
+            return await self._real.evalsha(*args, **kwargs)
 
     flakey = FlakeyRedis(redis_client)
     limiter = RedisRateLimiter(
