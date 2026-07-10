@@ -22,7 +22,7 @@ jobs:
         continue-on-error: true
       - name: Open issue on expiry
         if: steps.check.outcome == 'failure'
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             const fs = require('fs');
