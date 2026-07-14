@@ -2836,7 +2836,7 @@ requires-dist = [
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "fakeredis", extras = ["lua"], specifier = ">=2.20,<3" },
+    { name = "fakeredis", extras = ["lua"], specifier = ">=2.36.2,<3" },
     { name = "httpx2", specifier = ">=2.5.0" },
     { name = "hypothesis", specifier = ">=6.152.4" },
     { name = "moto", extras = ["secretsmanager"], specifier = ">=5.1.22,<6" },
