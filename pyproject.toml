@@ -32,15 +32,15 @@ dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.23",
     "pytest-httpx>=0.30",
-    "hypothesis>=6.152.4",
+    "hypothesis>=6.156.6",
     "ruff>=0.15.12",
-    "ty>=0.0.33",
+    "ty>=0.0.59",
     "moto[secretsmanager]>=5.1.22,<6",
     "opensearch-py>=2.7,<4",
     "pip-audit>=2.7,<3",
     "safety>=3.2,<4",
     "fakeredis[lua]>=2.20,<3",
-    "httpx2>=2.5.0",
+    "httpx2>=2.6.0",
 ]
 
 [build-system]
