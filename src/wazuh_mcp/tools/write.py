@@ -114,7 +114,7 @@ async def isolate_agent(
 class RestartAgentArgs(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    agent_id: Annotated[str, Field(min_length=1, max_length=16)]
+    agent_id: Annotated[str, Field(min_length=1, max_length=16, pattern=r"^[0-9]{3,10}$")]
     confirm: Literal[True]
 
 
@@ -138,7 +138,7 @@ async def restart_agent(
 class AddAgentToGroupArgs(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    agent_id: Annotated[str, Field(min_length=1, max_length=16)]
+    agent_id: Annotated[str, Field(min_length=1, max_length=16, pattern=r"^[0-9]{3,10}$")]
     group_id: Annotated[str, Field(min_length=1, max_length=128, pattern=r"^[a-zA-Z0-9_-]+$")]
     confirm: Literal[True]
 
@@ -165,7 +165,7 @@ async def add_agent_to_group(
 class RemoveAgentFromGroupArgs(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    agent_id: Annotated[str, Field(min_length=1, max_length=16)]
+    agent_id: Annotated[str, Field(min_length=1, max_length=16, pattern=r"^[0-9]{3,10}$")]
     group_id: Annotated[str, Field(min_length=1, max_length=128, pattern=r"^[a-zA-Z0-9_-]+$")]
     confirm: Literal[True]
 

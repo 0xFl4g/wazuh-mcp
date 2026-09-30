@@ -130,3 +130,9 @@ async def test_agent_packages_passes_run_as(session, audit, server_api, httpx_mo
     )
     assert result.agent_id == "001"
     assert result.items[0]["name"] == "openssl"
+
+
+@pytest.mark.parametrize("bad_id", ["../agents", "001/../../manager", "001?x=1", "abc"])
+def test_agent_subquery_rejects_non_numeric_agent_id(bad_id):
+    with pytest.raises(ValueError):
+        AgentSubquery(agent_id=bad_id)

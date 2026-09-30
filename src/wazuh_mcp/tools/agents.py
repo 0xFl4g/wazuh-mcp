@@ -53,7 +53,7 @@ class AgentSubquery(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    agent_id: Annotated[str, Field(min_length=1, max_length=16)]
+    agent_id: Annotated[str, Field(min_length=1, max_length=16, pattern=r"^[0-9]{3,10}$")]
     size: Annotated[int, Field(ge=1, le=500)] = 100
     offset: Annotated[int, Field(ge=0, le=10_000)] = 0
 

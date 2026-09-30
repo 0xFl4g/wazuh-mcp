@@ -254,3 +254,27 @@ async def test_run_active_response_on_group_empty_group_skips_put(client, httpx_
         r for r in httpx_mock.get_requests() if r.url.path == "/active-response"
     ]
     assert active_response_requests == [], "no PUT should fire on empty group"
+
+
+@pytest.mark.asyncio
+async def test_run_active_response_custom_args_cannot_override_command(client, httpx_mock) -> None:
+    """The tool layer allowlists ``command``; LLM-supplied custom_args must
+    not be able to swap it for a non-allowlisted command in the body."""
+    httpx_mock.add_response(
+        url=httpx.URL(
+            "https://wazuh.example:55000/active-response",
+            params={"agents_list": "003", "run_as": "alice"},
+        ),
+        method="PUT",
+        json={"data": {"affected_items": ["003"]}},
+    )
+    await client.run_active_response(
+        agent_ids=["003"],
+        command="block-ip",
+        custom_args={"command": "evil-script", "arguments": ["10.0.0.1"]},
+        run_as="alice",
+    )
+    sent = [r for r in httpx_mock.get_requests() if r.url.path == "/active-response"][-1]
+    body = json.loads(sent.read())
+    assert body["command"] == "block-ip"
+    assert body["arguments"] == ["10.0.0.1"]

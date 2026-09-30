@@ -194,3 +194,22 @@ async def test_result_contains_timestamp_and_affected_ids(server_api) -> None:
     result = await restart_agent(args=args, session=_session(), server_api=server_api)
     assert result.ok is True
     assert result.affected_agents == ["003"]
+
+
+# --- agent_id is interpolated into URL paths: must be a numeric Wazuh ID ---
+
+_BAD_AGENT_IDS = ["../manager", "003/../../manager", "003?x=1", "%2e%2e", "abc", "003\n", "1"]
+
+
+@pytest.mark.parametrize("bad_id", _BAD_AGENT_IDS)
+@pytest.mark.parametrize(
+    ("model", "extra"),
+    [
+        (RestartAgentArgs, {}),
+        (AddAgentToGroupArgs, {"group_id": "linux"}),
+        (RemoveAgentFromGroupArgs, {"group_id": "linux"}),
+    ],
+)
+def test_agent_id_rejects_non_numeric(model, extra, bad_id) -> None:
+    with pytest.raises(ValidationError):
+        model(agent_id=bad_id, confirm=True, **extra)

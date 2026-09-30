@@ -219,9 +219,8 @@ class ServerApiClient:
         run_as: str | None = None,
     ) -> dict[str, Any]:
         # Wazuh 4.9: PUT /active-response with agents_list query param.
-        body: dict[str, Any] = {"command": command}
-        if custom_args:
-            body.update(custom_args)
+        # command last: custom_args must not override the allowlisted command.
+        body: dict[str, Any] = {**(custom_args or {}), "command": command}
         return await self.put(
             "/active-response",
             json=body,
