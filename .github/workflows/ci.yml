@@ -1,26 +1,34 @@
 name: ci
+
 on:
   push:
     branches: [main]
   pull_request:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 env:
   # Opt into Node 24 for all JavaScript actions ahead of GitHub's June 2026
-  # forced default. Silences 'Node.js 20 actions are deprecated' warnings on
-  # third-party actions (gitleaks-action@v2, docker/*, codeql-action@v3) that
-  # haven't yet shipped Node 24-compatible majors. Drop once upstreams update.
+  # forced default.
   # https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 jobs:
   lint-and-unit:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v6
-      - uses: astral-sh/setup-uv@v7
-        with: { version: "latest" }
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
       - name: Install
-        run: uv sync --frozen
+        run: uv sync --locked
       - name: Ruff check
         run: uv run ruff check .
       - name: Ruff format check

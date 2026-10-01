@@ -9,6 +9,9 @@ on:
     paths:
       - "charts/**"
 
+permissions:
+  contents: read
+
 env:
   # Opt into Node 24 for JS actions ahead of GitHub's June 2026 forced default.
   # https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
@@ -17,11 +20,14 @@ env:
 jobs:
   lint:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Install Helm
-        uses: azure/setup-helm@v5
+        uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
         with:
           version: v3.16.0
 

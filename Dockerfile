@@ -30,7 +30,7 @@ ENV WAZUH_MCP_CONFIG_DIR=/config \
 # Non-root user
 RUN groupadd -g 10001 wazuhmcp && useradd -u 10001 -g 10001 -m -s /sbin/nologin wazuhmcp
 RUN mkdir -p /config && chown -R wazuhmcp:wazuhmcp /config /app /opt/venv
-USER wazuhmcp
+USER 10001:10001
 
 EXPOSE 8080
 

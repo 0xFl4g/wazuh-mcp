@@ -4,6 +4,9 @@ on:
     - cron: "33 6 * * 1"   # weekly Monday 06:33 UTC
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 env:
   # Opt into Node 24 for JS actions ahead of GitHub's June 2026 forced default.
   # https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
@@ -12,17 +15,23 @@ env:
 jobs:
   check-expiry:
     runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
     steps:
-      - uses: actions/checkout@v6
-      - uses: astral-sh/setup-uv@v7
-      - run: uv sync --frozen
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+      - run: uv sync --locked
       - name: Run expiry check
         id: check
         run: uv run python tools/check_security_ignores.py
         continue-on-error: true
       - name: Open issue on expiry
         if: steps.check.outcome == 'failure'
-        uses: actions/github-script@v9
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           script: |
             const fs = require('fs');
