@@ -1,5 +1,8 @@
 name: integration-log-scan
 
+# Artifacts from the triggering runs are treated as data only: never executed
+# or interpolated into shell, only scanned by gitleaks. The source workflows
+# are schedule/dispatch only, so no PR-controlled input reaches this one.
 on:
   workflow_run:  # zizmor: ignore[dangerous-triggers] read-only artifact scan; checks out default branch, never PR code
     workflows: ["integration", "destructive-integration", "multi-manager-integration"]

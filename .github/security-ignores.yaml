@@ -1,4 +1,4 @@
-# Suppression list for security CI findings (pip-audit / safety).
+# Suppression list for security CI findings (pip-audit).
 # Each entry MUST have all four fields. Pre-commit hook validates
 # schema. The security-ignores-expiry weekly cron (T11) opens a GitHub
 # issue if any entry's `expires:` date is past today.

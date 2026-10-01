@@ -59,9 +59,9 @@ Per-tenant token mint: Keycloak protocol-mapper hardcodes `tenant_id` per servic
 
 ## 3. Security CI (M5a)
 
-`.github/workflows/security.yml` runs on PR + nightly + manual dispatch.
+`.github/workflows/security.yml` runs on PR + push to main + weekly + manual dispatch.
 
-### dependency-audit job
+### `audit` job
 
 - `pip-audit --strict` against `uv export --no-emit-project --frozen` output.
 - Pre-step: `uv run python tools/check_security_ignores.py` validates `.github/security-ignores.yaml` schema + expiry.
