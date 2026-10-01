@@ -44,7 +44,7 @@ You can expect:
 
 Every push runs:
 - `gitleaks` against the source tree (`security` workflow).
-- `pip-audit` and `safety` against the locked dependency graph.
+- `pip-audit` against the locked dependency graph.
 - Integration logs are scanned with `gitleaks` post-run.
 
 CI exemptions for known-safe test fixtures are documented in `.gitleaks.toml`.

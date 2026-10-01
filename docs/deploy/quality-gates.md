@@ -64,7 +64,6 @@ Per-tenant token mint: Keycloak protocol-mapper hardcodes `tenant_id` per servic
 ### dependency-audit job
 
 - `pip-audit --strict` against `uv export --no-emit-project --frozen` output.
-- `safety check --full-report` (defense-in-depth — different DB).
 - Pre-step: `uv run python tools/check_security_ignores.py` validates `.github/security-ignores.yaml` schema + expiry.
 
 Adding a suppression:

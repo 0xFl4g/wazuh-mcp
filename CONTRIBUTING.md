@@ -23,7 +23,7 @@ Every PR runs:
 
 - **`ci`** — `ruff check`, `ruff format --check`, `ty check`, `pytest tests/unit`. Must pass.
 - **`helm-lint`** — runs on chart edits. Must pass.
-- **`security`** — `gitleaks`, `pip-audit`, `safety`. Must pass.
+- **`security`** — `gitleaks`, `pip-audit`, CodeQL, hadolint, trivy. Must pass.
 - **`integration`** — runs nightly + on workflow_dispatch. Touching integration code? Trigger it via `gh workflow run integration.yml` before requesting review.
 
 ## Code style
