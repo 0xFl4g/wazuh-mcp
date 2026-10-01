@@ -28,17 +28,17 @@ def lua_script() -> str:
 
 
 @pytest.fixture
-def fake_redis() -> fakeredis.FakeRedis[bytes]:
+def fake_redis() -> fakeredis.FakeRedis:
     return fakeredis.FakeRedis(decode_responses=False)
 
 
 @pytest.fixture
-def script_sha(lua_script: str, fake_redis: fakeredis.FakeRedis[bytes]) -> str:
+def script_sha(lua_script: str, fake_redis: fakeredis.FakeRedis) -> str:
     return fake_redis.script_load(lua_script)  # type: ignore[return-value]
 
 
 def _run(
-    redis: fakeredis.FakeRedis[bytes],
+    redis: fakeredis.FakeRedis,
     sha: str,
     key: str,
     *,
@@ -52,7 +52,7 @@ def _run(
 
 
 def test_new_bucket_starts_full_and_grants(
-    fake_redis: fakeredis.FakeRedis[bytes], script_sha: str
+    fake_redis: fakeredis.FakeRedis, script_sha: str
 ) -> None:
     result = _run(fake_redis, script_sha, "k", capacity=5, refill=1.0, now_ms=1_000_000)
     assert result == 1
@@ -61,13 +61,13 @@ def test_new_bucket_starts_full_and_grants(
     assert int(h[b"last_refill_ms"]) == 1_000_000
 
 
-def test_consume_to_exhaustion(fake_redis: fakeredis.FakeRedis[bytes], script_sha: str) -> None:
+def test_consume_to_exhaustion(fake_redis: fakeredis.FakeRedis, script_sha: str) -> None:
     for _ in range(5):
         assert _run(fake_redis, script_sha, "k", capacity=5, refill=0.0001, now_ms=1_000_000) == 1
     assert _run(fake_redis, script_sha, "k", capacity=5, refill=0.0001, now_ms=1_000_000) == 0
 
 
-def test_refill_across_seconds(fake_redis: fakeredis.FakeRedis[bytes], script_sha: str) -> None:
+def test_refill_across_seconds(fake_redis: fakeredis.FakeRedis, script_sha: str) -> None:
     for _ in range(3):
         assert _run(fake_redis, script_sha, "k", capacity=3, refill=1.0, now_ms=1_000_000) == 1
     assert _run(fake_redis, script_sha, "k", capacity=3, refill=1.0, now_ms=1_000_000) == 0
@@ -76,21 +76,19 @@ def test_refill_across_seconds(fake_redis: fakeredis.FakeRedis[bytes], script_sh
     assert _run(fake_redis, script_sha, "k", capacity=3, refill=1.0, now_ms=1_002_000) == 0
 
 
-def test_capacity_clamp_on_long_idle(
-    fake_redis: fakeredis.FakeRedis[bytes], script_sha: str
-) -> None:
+def test_capacity_clamp_on_long_idle(fake_redis: fakeredis.FakeRedis, script_sha: str) -> None:
     _run(fake_redis, script_sha, "k", capacity=5, refill=1.0, now_ms=1_000_000)
     for _ in range(5):
         assert _run(fake_redis, script_sha, "k", capacity=5, refill=1.0, now_ms=2_000_000) == 1
     assert _run(fake_redis, script_sha, "k", capacity=5, refill=1.0, now_ms=2_000_000) == 0
 
 
-def test_exact_boundary_grant(fake_redis: fakeredis.FakeRedis[bytes], script_sha: str) -> None:
+def test_exact_boundary_grant(fake_redis: fakeredis.FakeRedis, script_sha: str) -> None:
     assert _run(fake_redis, script_sha, "k", capacity=1, refill=1.0, now_ms=0) == 1
     assert _run(fake_redis, script_sha, "k", capacity=1, refill=1.0, now_ms=1_000) == 1
 
 
-def test_denial_persists_refill(fake_redis: fakeredis.FakeRedis[bytes], script_sha: str) -> None:
+def test_denial_persists_refill(fake_redis: fakeredis.FakeRedis, script_sha: str) -> None:
     assert _run(fake_redis, script_sha, "k", capacity=1, refill=0.5, now_ms=0) == 1
     assert _run(fake_redis, script_sha, "k", capacity=1, refill=0.5, now_ms=100) == 0
     h = fake_redis.hgetall("k")
@@ -99,37 +97,35 @@ def test_denial_persists_refill(fake_redis: fakeredis.FakeRedis[bytes], script_s
 
 
 def test_clock_skew_negative_elapsed_clamped(
-    fake_redis: fakeredis.FakeRedis[bytes], script_sha: str
+    fake_redis: fakeredis.FakeRedis, script_sha: str
 ) -> None:
     assert _run(fake_redis, script_sha, "k", capacity=2, refill=1.0, now_ms=1000) == 1
     assert _run(fake_redis, script_sha, "k", capacity=2, refill=1.0, now_ms=500) == 1
     assert _run(fake_redis, script_sha, "k", capacity=2, refill=1.0, now_ms=500) == 0
 
 
-def test_multi_token_consume(fake_redis: fakeredis.FakeRedis[bytes], script_sha: str) -> None:
+def test_multi_token_consume(fake_redis: fakeredis.FakeRedis, script_sha: str) -> None:
     assert _run(fake_redis, script_sha, "k", capacity=5, refill=1.0, now_ms=0, n=3) == 1
     h = fake_redis.hgetall("k")
     assert float(h[b"tokens"]) == pytest.approx(2.0)
     assert _run(fake_redis, script_sha, "k", capacity=5, refill=1.0, now_ms=0, n=3) == 0
 
 
-def test_ttl_applied_on_every_call(fake_redis: fakeredis.FakeRedis[bytes], script_sha: str) -> None:
+def test_ttl_applied_on_every_call(fake_redis: fakeredis.FakeRedis, script_sha: str) -> None:
     _run(fake_redis, script_sha, "k", capacity=3, refill=1.0, now_ms=0, ttl=120)
     assert 0 < fake_redis.ttl("k") <= 120
     _run(fake_redis, script_sha, "k", capacity=3, refill=1.0, now_ms=1000, ttl=180)
     assert 120 < fake_redis.ttl("k") <= 180
 
 
-def test_distinct_keys_isolated(fake_redis: fakeredis.FakeRedis[bytes], script_sha: str) -> None:
+def test_distinct_keys_isolated(fake_redis: fakeredis.FakeRedis, script_sha: str) -> None:
     for _ in range(3):
         assert _run(fake_redis, script_sha, "ka", capacity=3, refill=0.0001, now_ms=0) == 1
     assert _run(fake_redis, script_sha, "ka", capacity=3, refill=0.0001, now_ms=0) == 0
     assert _run(fake_redis, script_sha, "kb", capacity=3, refill=0.0001, now_ms=0) == 1
 
 
-def test_zero_refill_rate_supported(
-    fake_redis: fakeredis.FakeRedis[bytes], script_sha: str
-) -> None:
+def test_zero_refill_rate_supported(fake_redis: fakeredis.FakeRedis, script_sha: str) -> None:
     # Edge case — Pydantic schema enforces refill > 0 at config-load time, but
     # the script itself shouldn't crash on 0 (defensive).
     assert _run(fake_redis, script_sha, "k", capacity=2, refill=0.0, now_ms=0) == 1

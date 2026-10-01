@@ -67,6 +67,10 @@ line-length = 100
 target-version = "py312"
 src = ["src", "tests"]
 
+[tool.ruff.format]
+# ruff 0.16 formats fenced code in markdown; docs snippets are illustrative, not source
+exclude = ["*.md"]
+
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM", "RUF", "N", "ASYNC"]
 ignore = ["E501"]
