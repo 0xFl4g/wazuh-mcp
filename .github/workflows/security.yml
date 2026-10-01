@@ -64,7 +64,7 @@ jobs:
         run: uv sync --locked
       - name: Validate security-ignores schema
         run: uv run python tools/check_security_ignores.py
-      - run: uv export --no-emit-project --frozen > requirements-audit.txt
+      - run: uv export --no-emit-project --frozen --all-extras > requirements-audit.txt
       - run: uvx pip-audit@2.10.1 --strict --no-deps --disable-pip --requirement requirements-audit.txt
 
   codeql:
