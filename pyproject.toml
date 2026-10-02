@@ -5,7 +5,7 @@ description = "Model Context Protocol server for Wazuh SIEM/XDR"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "mcp>=1.2.0,<2",  # 2.x renames FastMCP/MCPServer and moves lowlevel request_ctx; migration deferred
+    "mcp>=1.2.0,<3",  # 2.x renames FastMCP/MCPServer and moves lowlevel request_ctx; migration deferred
     "httpx>=0.27.0",
     "pydantic>=2.13.3",
     "pyyaml>=6.0.1",
