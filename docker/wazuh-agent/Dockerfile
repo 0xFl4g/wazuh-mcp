@@ -3,7 +3,7 @@
 # .deb package for the integration fixture. Just enough to enroll
 # against the test manager via authd and stay connected so M4b
 # active-response/restart write tools have a peer to deliver to.
-FROM ubuntu:22.04
+FROM ubuntu:26.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 
