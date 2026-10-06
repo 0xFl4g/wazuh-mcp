@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.27
 
-FROM python:3.12-slim AS base
+FROM python:3.14-slim AS base
 
 # uv install
 COPY --from=ghcr.io/astral-sh/uv:0.5.11 /uv /uvx /usr/local/bin/
@@ -21,6 +21,10 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 COPY src/ ./src/
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --locked --no-dev
+
+# Drop the base image's pip: its vendored urllib3/msgpack/setuptools trip trivy and
+# nothing at runtime needs pip (deps live in /opt/venv, installed by uv).
+RUN pip uninstall -y pip
 
 # Runtime
 ENV WAZUH_MCP_CONFIG_DIR=/config \
