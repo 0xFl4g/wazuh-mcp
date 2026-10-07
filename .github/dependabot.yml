@@ -25,6 +25,11 @@ updates:
       interval: "weekly"
     cooldown:
       default-days: 7
+    ignore:
+      # The wazuh-agent test image tracks Ubuntu LTS only; LTS moves are
+      # planned by hand (Dependabot proposed non-LTS 25.10 in #54).
+      - dependency-name: "ubuntu"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
     groups:
       minor-patch:
         update-types: ["minor", "patch"]
