@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.27
 
-FROM python:3.14-slim AS base
+FROM python:3.15-slim AS base
 
 # uv install
 COPY --from=ghcr.io/astral-sh/uv:0.12.23 /uv /uvx /usr/local/bin/
